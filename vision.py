@@ -4,14 +4,24 @@ import cv2
 import time
 from tracker import shared_tracker
 from framebuffer import framebuffer
-from battery_data import shared_rfid_manager  # ✅ Import to log history and handle check-out
+from battery_data import shared_rfid_manager
+import platform
 
 qr_detector = cv2.QRCodeDetector()
 
 def start_camera_loop():
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    # Detect OS and pick backend
+    system = platform.system()
+    if system == "Windows":
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    elif system == "Darwin":  # macOS
+        cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
+    else:
+        cap = cv2.VideoCapture(0)  # Linux or fallback
+
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
     if not cap.isOpened():
         print("Failed to open camera")
         return
@@ -22,6 +32,7 @@ def start_camera_loop():
         if not ret or frame is None:
             time.sleep(0.1)
             continue
+
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         _, decoded_info, points, _ = qr_detector.detectAndDecodeMulti(gray)
@@ -41,6 +52,7 @@ def start_camera_loop():
 
         display = frame.copy()
 
+        # draw lines around the detected qr codes and display the decoded info
         if points is not None and len(points):
             for i in range(len(decoded_info)):
                 if decoded_info[i]:
@@ -52,7 +64,7 @@ def start_camera_loop():
                     cv2.putText(display, decoded_info[i], (x, y - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 4)
 
-                    # ✅ Show cycles and avg charge time for debug
+
                     stats = shared_rfid_manager.get_stats(decoded_info[i])
                     if stats:
                         stats_text = f"Cycles: {stats['cycles']} Avg: {int(stats['average_charge_time'])}s"
