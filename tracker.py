@@ -21,3 +21,16 @@ class BatteryTracker:
         return dict(self.batteries)
 
 shared_tracker = BatteryTracker()
+
+
+#TODO:
+# - Add backend logic for battery health/status
+# - Fix frontend view, not visually appealing
+# - Add RFID check-in/out functionality
+# - Add QR code detection and tracking (reliability)
+# - Fix JSON battery status and history
+# - Add install script
+# - Fix settings page
+# - tournament priority metric
+# - DS log scraping
+# - DS log parsing
