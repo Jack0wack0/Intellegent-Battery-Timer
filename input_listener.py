@@ -1,149 +1,114 @@
+from datetime import datetime
 import serial
 import threading
 import time
 from pynput import keyboard
-import queue
 
-ARDUINO_PORT = 'COM4'
-BAUDRATE = 9600
-MATCH_WINDOW = 1.5  # seconds tolerance for matching tag to slot presence
+# === CONFIGURATION ===
+COM_PORT = "COM4"
+BAUD_RATE = 9600
+MATCH_WINDOW_SECONDS = 1.0
 
-tag_queue = queue.Queue()
+# === STATE TRACKING ===
+slot_status = {}  # slot_id -> {"state": "PRESENT"/"REMOVED", "last_change": timestamp, "tag": optional tag}
+pending_tags = []  # list of (tag_id, timestamp) tuples
+lock = threading.Lock()
+tag_buffer = ""
 
-# Thread-safe list of (slot_id, state, timestamp)
-slot_events = []
-slot_events_lock = threading.Lock()
+# === UTILITY ===
+def timestamp(ts=None):
+    return datetime.fromtimestamp(ts or time.time()).strftime("%Y-%m-%d %H:%M:%S")
 
-class SlotListener(threading.Thread):
-    def __init__(self, port, baudrate=9600):
-        super().__init__()
-        self.ser = serial.Serial(port, baudrate, timeout=1)
-        self.running = True
+# === SERIAL HANDLER THREAD ===
+def handle_serial():
+    try:
+        ser = serial.Serial(COM_PORT, BAUD_RATE)
+    except Exception as e:
+        print(f"[Serial Port Error] {e}")
+        return
 
-    def run(self):
-        while self.running:
-            try:
-                line = self.ser.readline().decode(errors='ignore').strip()
-                if not line:
-                    continue
-                #print(f"[Arduino Raw] {line}")  # debug print
-
-                if line.startswith("SLOT_") and (":PRESENT" in line or ":REMOVED" in line):
-                    try:
-                        slot_id_str = line.split("_")[1].split(":")[0]
-                        slot_id = int(slot_id_str)
-                    except (IndexError, ValueError) as e:
-                        print(f"[Arduino Error] Failed to parse slot_id: {e}")
-                        continue
-
-                    state = line.split(":")[1]
-                    timestamp = time.time()
-
-                    with slot_events_lock:
-                        slot_events.append((slot_id, state, timestamp))
-
-                    if state == "PRESENT":
-                        print(f"[Arduino] Slot {slot_id} reports: PRESENT")
-                    elif state == "REMOVED":
-                        print(f"[Arduino] Slot {slot_id} reports: REMOVED")
-            except Exception as e:
-                print(f"[Arduino Error] {e}")
-
-    def stop(self):
-        self.running = False
-        self.ser.close()
-
-class TagListener(threading.Thread):
-    def __init__(self):
-        super().__init__()
-        self.buffer = ""
-        self.running = True
-        self.listener = keyboard.Listener(on_press=self.on_press)
-
-    def on_press(self, key):
-        try:
-            char = key.char
-            if char.isdigit():
-                self.buffer += char
-                if len(self.buffer) >= 10:  # assuming tag length 10 digits
-                    timestamp = time.time()
-                    tag_queue.put((self.buffer, timestamp))
-                    print(f"[RFID] Tag Read: {self.buffer}")
-                    self.buffer = ""
-        except AttributeError:
-            pass
-
-    def run(self):
-        self.listener.start()
-        self.listener.join()
-
-    def stop(self):
-        self.running = False
-        self.listener.stop()
-
-def prune_old_events(max_age=10):
-    """Remove slot events older than max_age seconds."""
-    cutoff = time.time() - max_age
-    with slot_events_lock:
-        while slot_events and slot_events[0][2] < cutoff:
-            slot_events.pop(0)
-
-def find_slot_for_tag(t_tag, window=MATCH_WINDOW):
-    with slot_events_lock:
-        # Filter events within [t_tag - window, t_tag + window]
-        relevant_events = [e for e in slot_events if t_tag - window <= e[2] <= t_tag + window]
-
-    # For each slot, find the latest event within window
-    latest_events = {}
-    for slot_id, state, ts in sorted(relevant_events, key=lambda x: x[2]):
-        latest_events[slot_id] = (state, ts)
-
-    # Find slots currently present in this window
-    present_slots = [slot for slot, (state, _) in latest_events.items() if state == "PRESENT"]
-
-    if len(present_slots) == 1:
-        return present_slots[0]
-    else:
-        return None
-
-def match_tag_to_slot():
     while True:
         try:
-            tag, tag_time = tag_queue.get(timeout=0.5)
-        except queue.Empty:
-            prune_old_events()  # clean old events periodically
+            raw_line = ser.readline().decode("utf-8").strip()
+        except Exception:
             continue
 
-        print(f"[MATCH] Trying to match tag {tag} at time {tag_time}")
-        matched_slot = find_slot_for_tag(tag_time)
+        if raw_line == "":
+            continue
 
-        if matched_slot is not None:
-            print(f"[MATCH] Battery {tag} assigned to slot {matched_slot} at {time.strftime('%H:%M:%S')}")
-        else:
-            print(f"[NO MATCH] Battery {tag} read but no unique slot match found at {time.strftime('%H:%M:%S')}")
 
-def main():
-    slot_listener = SlotListener(ARDUINO_PORT, BAUDRATE)
-    tag_listener = TagListener()
+        # Remove leading numeric prefix (timestamp) before SLOT_
+        if "SLOT_" not in raw_line:
+            continue
+        slot_index = raw_line.index("SLOT_")
+        line = raw_line[slot_index:]  # e.g. "SLOT_0:PRESENT"
 
-    slot_listener.start()
-    tag_listener.start()
+        parts = line.replace("SLOT_", "").split(":")
+        if len(parts) != 2:
+            continue
 
-    matcher_thread = threading.Thread(target=match_tag_to_slot, daemon=True)
-    matcher_thread.start()
+        try:
+            slot = int(parts[0])
+            state = parts[1]
+        except ValueError:
+            continue
 
+        now = time.time()
+
+        with lock:
+            if slot not in slot_status:
+                slot_status[slot] = {"state": None, "last_change": 0, "tag": None}
+
+            prev_tag = slot_status[slot]["tag"]
+            slot_status[slot]["state"] = state
+            slot_status[slot]["last_change"] = now
+
+            if state == "PRESENT":
+                
+                # Try to match with pending RFID tag
+                matched_tag = None
+                
+                for tag, t_time in pending_tags:
+                    print(f"[DEBUG] Comparing tag time {timestamp(t_time)} to slot time {timestamp(now)}")
+                    if abs(now - t_time) <= MATCH_WINDOW_SECONDS:
+                        matched_tag = tag
+                        break
+                if matched_tag:
+                    print(f"[MATCH] Tag {matched_tag} matched to slot {slot} at {timestamp(now)}")
+                    slot_status[slot]["tag"] = matched_tag
+                    pending_tags.remove((matched_tag, t_time))
+
+            elif state == "REMOVED":
+                if prev_tag:
+                    print(f"[REMOVED] Tag {prev_tag} removed from slot {slot} at {timestamp(now)}")
+                    slot_status[slot]["tag"] = None  # Clear the tag only if it was bound
+
+# === RFID LISTENER THREAD ===
+def on_key_press(key):
+    global tag_buffer
     try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("Shutting down...")
-        slot_listener.stop()
-        tag_listener.stop()
-        slot_listener.join()
-        tag_listener.join()
+        if hasattr(key, 'char') and key.char and key.char.isdigit():
+            tag_buffer += key.char
+        elif key == keyboard.Key.enter:
+            if len(tag_buffer) >= 10:
+                tag_id = tag_buffer[-10:]  # Take last 10 digits
+                now = time.time()
+                with lock:
+                    pending_tags.append((tag_id, now))
+                    print(f"[RFID] Tag Read: {tag_id} at {timestamp(now)}")
+            tag_buffer = ""
+    except Exception:
+        pass
 
-if __name__ == '__main__':
-    main()
+def listen_rfid():
+    listener = keyboard.Listener(on_press=on_key_press)
+    listener.daemon = True
+    listener.start()
 
-#THIS IS STILL BROKEN IDK HOW TO FIX IT I WILL GET CHATGPT TO DO IT LATER
-# i will scan a tag and i get the raw arduino data just fine but it for some reason doesnt bind it to the tag id. 
+# === MAIN ===
+threading.Thread(target=handle_serial, daemon=True).start()
+listen_rfid()
+
+# Keep alive
+while True:
+    time.sleep(1)
