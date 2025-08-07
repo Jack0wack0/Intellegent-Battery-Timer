@@ -5,7 +5,7 @@ SETTINGS_FILE = "settings.json"
 
 def load_settings():
     if not os.path.exists(SETTINGS_FILE):
-        return {"minimum_time": 60, "mode": "camera"}  # Fallback defaults
+        return {"minimum_time": 60, "mode": "rfid"}  # Fallback defaults
     with open(SETTINGS_FILE, "r") as f:
         return json.load(f)
 
@@ -18,4 +18,4 @@ def get_minimum_time_seconds():
     return settings.get("minimum_time", 60) * 60
 
 def get_mode():
-    return load_settings().get("mode", "camera")
+    return load_settings().get("mode", "rfid")
