@@ -120,7 +120,7 @@ def handle_serial():
                        chargingStart = currentBatteryData.get('ChargingStartTime')
                        chargingSlot = currentBatteryData.get('ChargingSlot')
 
-                    ref.child('CurrentChargingList/' + prev_tag).set(None)
+                    ref.child('CurrentChargingList/' + prev_tag).remove()
 
                     ref.child('BatteryList/' + prev_tag).set({
                       'ID': matched_tag,
