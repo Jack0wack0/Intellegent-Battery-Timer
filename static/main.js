@@ -139,3 +139,42 @@ window.onclick = function(event) {
     }
   };
   
+// Firebase listener
+function listenForNameRequests() {
+  const dbRef = firebase.database().ref("NameRequests");
+
+  dbRef.on("child_added", (snapshot) => {
+    const tagId = snapshot.key;
+    const data = snapshot.val();
+    showNameModal(tagId, data.slot);
+  });
+}
+
+// Show modal
+function showNameModal(tagId, slot) {
+  document.getElementById("name-modal").style.display = "block";
+  document.getElementById("name-tag-id").innerText = tagId;
+  document.getElementById("name-tag-slot").innerText = slot;
+}
+
+// Submit name
+function submitBatteryName() {
+  const tagId = document.getElementById("name-tag-id").innerText;
+  const name = document.getElementById("battery-name-input").value;
+
+  if (!name) return alert("Please enter a name");
+
+  fetch('/api/battery-name', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tag_id: tagId, name: name })
+  }).then(res => {
+    if (res.ok) {
+      // Clear request from Firebase
+      firebase.database().ref("NameRequests/" + tagId).remove();
+      document.getElementById("name-modal").style.display = "none";
+    } else {
+      alert("Failed to save name");
+    }
+  });
+}

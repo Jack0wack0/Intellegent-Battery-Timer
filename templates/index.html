@@ -6,6 +6,8 @@
   <title>Battery Tracker</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-database-compat.js"></script>
   <script src="{{ url_for('static', filename='main.js') }}"></script>
 </head>
 
@@ -105,7 +107,17 @@
       </div>
     </div>
   </div>
-  
+    <!-- Naming Modal -->
+  <div id="name-modal" class="modal">
+    <div class="modal-content">
+      <h2>Name New Battery</h2>
+      <p>Tag ID: <span id="name-tag-id"></span></p>
+      <p>Slot: <span id="name-tag-slot"></span></p>
+      <input type="text" id="battery-name-input" placeholder="Enter battery name">
+      <button onclick="submitBatteryName()">Save Name</button>
+    </div>
+</div>
+
 
 </body>
 </html>

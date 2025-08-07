@@ -117,6 +117,16 @@ def handle_serial():
                         'ChargingEndTime': None,
                         'LastChargingSlot': None,
                     })
+                    
+                    # Check if battery has a name in BatteryNames
+                    name_ref = ref.child(f'BatteryNames/{matched_tag}')
+                    if not name_ref.get():
+                        # Trigger the frontend to prompt naming
+                        ref.child(f'NameRequests/{matched_tag}').set({
+                            'slot': slot,
+                            'timestamp': timestamp(now)
+                        })
+
 
             elif state == "REMOVED":
                 if prev_tag:
@@ -169,9 +179,11 @@ def listen_rfid():
     listener.start()
 
 # === MAIN ===
-threading.Thread(target=handle_serial, daemon=True).start()
-listen_rfid()
+if __name__ == "__main__":
+    threading.Thread(target=handle_serial, daemon=True).start()
+    listen_rfid()
 
-# Keep alive
-while True:
-    time.sleep(1)
+    # Keep alive
+    while True:
+        time.sleep(1)
+
