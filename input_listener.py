@@ -110,16 +110,16 @@ def handle_serial():
                     print(f"[REMOVED] Tag {prev_tag} removed from slot {slot} at {timestamp(now)}")
                     slot_status[slot]["tag"] = None  # Clear the tag only if it was bound
 
-                    currentBatteryData = ref.child('BatteryList/'+ matched_tag).get()
-                    if currentBatteryData:
-                        chargingStart = currentBatteryData.get('ChargingStartTime')
-                        chargingSlot = currentBatteryData.get('ChargingSlot')
+                    #currentBatteryData = ref.child('BatteryList/'+ matched_tag).get()
+                    #if currentBatteryData:
+                     #   chargingStart = currentBatteryData.get('ChargingStartTime')
+                      #  chargingSlot = currentBatteryData.get('ChargingSlot')
 
                     ref.child('BatteryList/' + matched_tag).set({
                       'ID': matched_tag,
                       'IsCharging': False,
                       'ChargingSlot': None,
-                      'LastChargingSlot': chargingSlot,
+                      #'LastChargingSlot': chargingSlot,
                       'ChargingEndTime': timestamp(now),
                       'ChargingStartTime': None,
                       'LastOverallChargeTime': 0
