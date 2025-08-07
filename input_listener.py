@@ -101,8 +101,14 @@ def handle_serial():
                         'ChargingStartTime': timestamp(now),
                     })
 
+                    getCurrentChargingRecords = ref.child('BatteryList/' + matched_tag + '/ChargingRecords').get()
+                    if getCurrentChargingRecords is None:
+                      getCurrentChargingRecords = []
+                    getCurrentChargingRecords.append({'startTime': timestamp(now),'ChargingSlot': slot,})
+
                     ref.child('BatteryList/' + matched_tag).set({
                         'ID': matched_tag,
+                        'ChargingRecords': getCurrentChargingRecords,
                         'IsCharging': True,
                         'ChargingSlot': slot,
                         'ChargingStartTime': timestamp(now),
@@ -120,7 +126,15 @@ def handle_serial():
                        chargingStart = currentBatteryData.get('ChargingStartTime')
                        chargingSlot = currentBatteryData.get('ChargingSlot')
 
-                    ref.child('CurrentChargingList/' + prev_tag).remove()
+                    ref.child('CurrentChargingList/' + prev_tag).delete()
+
+                    last_record = ref.child('BatteryList/' + prev_tag + '/ChargingRecords').order_by_key().limit_to_last(1).get()
+                    if last_record:
+                        last_record = list(last_record.values())[0]
+
+                    ref.child('BatteryList/' + prev_tag + '/ChargingRecords/' + last_record).set({
+                        'endTime': timestamp(now)
+                    })
 
                     ref.child('BatteryList/' + prev_tag).set({
                       'ID': matched_tag,
