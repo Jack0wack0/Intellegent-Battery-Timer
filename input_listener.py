@@ -130,10 +130,9 @@ def handle_serial():
 
                     ref.child('CurrentChargingList/' + prev_tag).delete()
 
-                    last_record = ref.child('BatteryList/' + prev_tag + '/ChargingRecords').order_by_key().limit_to_last(1).get()
-                    if last_record:
-                        last_record_key = last_record[0]['id']
-                        ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{last_record_key}/endTime').set(timestamp(now))
+                    getCurrentChargingRecords = ref.child('BatteryList/' + prev_tag + '/ChargingRecords').get()
+                    count = len(getCurrentChargingRecords) if getCurrentChargingRecords else 0
+                    ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{count}').set({'endtime': timestamp(now)})
 
                     ref.child('BatteryList/' + prev_tag).set({
                         'ID': prev_tag,
