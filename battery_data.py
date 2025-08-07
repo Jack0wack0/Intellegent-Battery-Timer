@@ -2,7 +2,7 @@
 import json
 import os
 import time
-from tracker import shared_tracker
+
 
 BATTERY_DATA_FILE = "battery_data_testing.json"
 
