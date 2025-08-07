@@ -23,6 +23,6 @@ ref.child('test').set({
           'id': 5454
       })
 
-id_test = ref.child('test/id').get()
+id_test = ref.child('BatteryList/1').get()
 
 print('Data from Firebase: ' + str(id_test))

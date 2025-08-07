@@ -3,11 +3,29 @@ import serial
 import threading
 import time
 from pynput import keyboard
+import os
+from os import getenv
+import firebase_admin
+from firebase_admin import credentials
+from firebase_admin import db
+from dotenv import load_dotenv
 
 # === CONFIGURATION ===
+load_dotenv()
+
 COM_PORT = "COM4"
 BAUD_RATE = 9600
 MATCH_WINDOW_SECONDS = 1.0
+FIREBASE_DB_BASE_URL = getenv('FIREBASE_DB_BASE_URL')
+FIREBASE_CREDS_FILE = getenv('FIREBASE_CREDS_FILE')
+
+# Initialize the app with a service account, granting admin privileges
+cred = credentials.Certificate(FIREBASE_CREDS_FILE)
+firebase_admin.initialize_app(cred, {
+    'databaseURL': FIREBASE_DB_BASE_URL
+})
+
+ref = db.reference('/')
 
 # === STATE TRACKING ===
 slot_status = {}  # slot_id -> {"state": "PRESENT"/"REMOVED", "last_change": timestamp, "tag": optional tag}
@@ -78,10 +96,34 @@ def handle_serial():
                     slot_status[slot]["tag"] = matched_tag
                     pending_tags.remove((matched_tag, t_time))
 
+                    ref.child('BatteryList/' + matched_tag).set({
+                        'ID': matched_tag,
+                        'IsCharging': True,
+                        'ChargingSlot': slot,
+                        'ChargingStartTime': timestamp(now),
+                        'ChargingEndTime': None,
+                        'LastChargingSlot': None,
+                    })
+
             elif state == "REMOVED":
                 if prev_tag:
                     print(f"[REMOVED] Tag {prev_tag} removed from slot {slot} at {timestamp(now)}")
                     slot_status[slot]["tag"] = None  # Clear the tag only if it was bound
+
+                    currentBatteryData = ref.child('BatteryList/'+ matched_tag).get()
+                    if currentBatteryData:
+                        chargingStart = currentBatteryData.get('ChargingStartTime')
+                        chargingSlot = currentBatteryData.get('ChargingSlot')
+
+                    ref.child('BatteryList/' + matched_tag).set({
+                      'ID': matched_tag,
+                      'IsCharging': False,
+                      'ChargingSlot': None,
+                      'LastChargingSlot': chargingSlot,
+                      'ChargingEndTime': timestamp(now),
+                      'ChargingStartTime': None,
+                      'LastOverallChargeTime': 0
+                    })
 
 # === RFID LISTENER THREAD ===
 def on_key_press(key):
