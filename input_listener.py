@@ -119,31 +119,30 @@ def handle_serial():
             elif state == "REMOVED":
                 if prev_tag:
                     print(f"[REMOVED] Tag {prev_tag} removed from slot {slot} at {timestamp(now)}")
-                    slot_status[slot]["tag"] = None  # Clear the tag only if it was bound
+                    slot_status[slot]["tag"] = None
 
-                    currentBatteryData = ref.child('BatteryList/'+ prev_tag).get()
+                    currentBatteryData = ref.child('BatteryList/' + prev_tag).get()
                     if currentBatteryData:
-                       chargingStart = currentBatteryData.get('ChargingStartTime')
-                       chargingSlot = currentBatteryData.get('ChargingSlot')
+                        chargingStart = currentBatteryData.get('ChargingStartTime')
+                        chargingSlot = currentBatteryData.get('ChargingSlot')
 
                     ref.child('CurrentChargingList/' + prev_tag).delete()
 
-                    last_record = ref.child('BatteryList/' + prev_tag + '/ChargingRecords').order_by_key().limit_to_last(1).get()
+                    last_record = ref.child('BatteryList/' + prev_tag + '/ChargingRecords') \
+                                    .order_by_key().limit_to_last(1).get()
                     if last_record:
-                        last_record = list(last_record.values())[0]
-
-                    ref.child('BatteryList/' + prev_tag + '/ChargingRecords/' + last_record).set({
-                        'endTime': timestamp(now)
-                    })
+                        last_record_key = list(last_record.keys())[0]
+                        ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{last_record_key}/endTime') \
+                        .set(timestamp(now))
 
                     ref.child('BatteryList/' + prev_tag).set({
-                      'ID': matched_tag,
-                      'IsCharging': False,
-                      'ChargingSlot': None,
-                      'LastChargingSlot': chargingSlot,
-                      'ChargingEndTime': timestamp(now),
-                      'ChargingStartTime': None,
-                      'LastOverallChargeTime': 0
+                        'ID': prev_tag,
+                        'IsCharging': False,
+                        'ChargingSlot': None,
+                        'LastChargingSlot': chargingSlot,
+                        'ChargingEndTime': timestamp(now),
+                        'ChargingStartTime': None,
+                        'LastOverallChargeTime': 0
                     })
 
 # === RFID LISTENER THREAD ===
