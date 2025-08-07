@@ -115,7 +115,7 @@ def handle_serial():
                      #   chargingStart = currentBatteryData.get('ChargingStartTime')
                       #  chargingSlot = currentBatteryData.get('ChargingSlot')
 
-                    ref.child('BatteryList/' + matched_tag).set({
+                    ref.child('BatteryList/' + str(matched_tag)).set({
                       'ID': matched_tag,
                       'IsCharging': False,
                       'ChargingSlot': None,
