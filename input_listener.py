@@ -96,7 +96,7 @@ def handle_serial():
                     slot_status[slot]["tag"] = matched_tag
                     pending_tags.remove((matched_tag, t_time))
 
-                    ref.child('CurrentChargingList/' + matched_tag).set({
+                    ref.child('CurrentChargingList/' + matched_tag).update({
                         'ID': matched_tag,
                         'ChargingStartTime': timestamp(now),
                     })
@@ -108,7 +108,7 @@ def handle_serial():
                     else:
                       getCurrentChargingRecords.append({'startTime': timestamp(now),'ChargingSlot': slot,'id': len(getCurrentChargingRecords)})
 
-                    ref.child('BatteryList/' + matched_tag).set({
+                    ref.child('BatteryList/' + matched_tag).update({
                         'ID': matched_tag,
                         'ChargingRecords': getCurrentChargingRecords,
                         'IsCharging': True,
