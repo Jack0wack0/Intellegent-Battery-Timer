@@ -132,9 +132,9 @@ def handle_serial():
 
                     getCurrentChargingRecords = ref.child('BatteryList/' + prev_tag + '/ChargingRecords').get()
                     count = len(getCurrentChargingRecords) if getCurrentChargingRecords else 0
-                    ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{count}').set({'endtime': timestamp(now)})
+                    ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{count-1}').update({'endtime': timestamp(now)})
 
-                    ref.child('BatteryList/' + prev_tag).set({
+                    ref.child('BatteryList/' + prev_tag).update({
                         'ID': prev_tag,
                         'IsCharging': False,
                         'ChargingSlot': None,
@@ -143,6 +143,8 @@ def handle_serial():
                         'ChargingStartTime': None,
                         'LastOverallChargeTime': 0
                     })
+
+#ALEX DO NOT USE .SET ANYMORE DINGUS ONLY USE .UPDATE BRO
 
 # === RFID LISTENER THREAD ===
 def on_key_press(key):
