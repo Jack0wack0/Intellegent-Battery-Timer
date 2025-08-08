@@ -180,7 +180,7 @@ def handle_serial():
                     overallDuration = 0
                     for record in getCurrentChargingRecords:
                         overallDuration += int(record.get('Duration')) #Overall charge time is the sum of all durations in the records array
-
+                        
                     avgDuration = overallDuration/count   #Average charge time is the overall charge time divided by the number of cycles
                     avgDuration = "{:.0f}".format(avgDuration) #Format to remove decimal places, this also rounds DOWN by removing the decimal places
 
