@@ -191,7 +191,7 @@ def handle_serial():
                         'LastChargingSlot': chargingSlot, #Set the last charging slot to the current slot it was charging in
                         'ChargingEndTime': timestamp(now), #When was the most recent time it was on a charger
                         'ChargingStartTime': None, #Remove the ChargingStartTime as it's no longer charging
-                        'LastOverallChargeTime': duration, #Set the last overall charge time to the duration of the most recent charge 
+                        'LastOverallChargeTime': str(duration.total_seconds())[:-2], #Set the last overall charge time to the duration of the most recent charge 
                         'TotalCycles' : totalCycles, #Total number of charge cycles for this battery/tag
                         'AverageChargeTime': avgDuration, #Average charge time in seconds
                         'OverallChargeTime': overallDuration, #Overall lifetime charge time in seconds
