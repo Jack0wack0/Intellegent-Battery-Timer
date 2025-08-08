@@ -179,8 +179,8 @@ def handle_serial():
                     #Note, everything is in SECONDS
                     overallDuration = 0
                     for record in getCurrentChargingRecords:
-                        overallDuration += record.get('Duration') #Overall charge time is the sum of all durations in the records array
-
+                        overallDuration += int(record.get('Duration')) #Overall charge time is the sum of all durations in the records array
+                        
                     avgDuration = overallDuration/count   #Average charge time is the overall charge time divided by the number of cycles
                     avgDuration = "{:.0f}".format(avgDuration) #Format to remove decimal places, this also rounds DOWN by removing the decimal places
 
@@ -191,7 +191,7 @@ def handle_serial():
                         'LastChargingSlot': chargingSlot, #Set the last charging slot to the current slot it was charging in
                         'ChargingEndTime': timestamp(now), #When was the most recent time it was on a charger
                         'ChargingStartTime': None, #Remove the ChargingStartTime as it's no longer charging
-                        'LastOverallChargeTime': duration, #Set the last overall charge time to the duration of the most recent charge 
+                        'LastOverallChargeTime': str(duration), #Set the last overall charge time to the duration of the most recent charge
                         'TotalCycles' : totalCycles, #Total number of charge cycles for this battery/tag
                         'AverageChargeTime': avgDuration, #Average charge time in seconds
                         'OverallChargeTime': overallDuration, #Overall lifetime charge time in seconds
