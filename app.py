@@ -2,7 +2,6 @@ from flask import Flask, render_template, jsonify, request
 import threading
 import time
 from waitress import serve
-
 from firebase_admin import db 
 from input_listener import handle_serial, listen_rfid
 import threading
@@ -10,39 +9,9 @@ import threading
 
 app = Flask(__name__)
 
-# Global settings object
-settings_state = {"minimum_time": 60, "mode": "rfid"}
-
 @app.route('/')
 def index():
     return render_template('index.html')
-
-@app.route('/api/status')
-def status():
-    
-    minimum_time_seconds = settings_state.get("minimum_time", 60)
-
-@app.route('/api/set_minimum_time', methods=['POST'])
-def set_min_time():
-    settings_state["minimum_time"] = request.json.get('minimum_time', 0)
-    return jsonify(success=True)
-
-@app.route('/api/get_minimum_time')
-def get_min_time():
-    return jsonify(minimum_time=settings_state.get("minimum_time", 0))
-
-@app.route('/api/set_settings', methods=['POST'])
-def set_settings():
-    data = request.get_json()
-    if "minimum_time" in data:
-        settings_state["minimum_time"] = int(data["minimum_time"])
-    if "mode" in data:
-        settings_state["mode"] = data["mode"]
-    return jsonify(settings_state)
-
-@app.route('/api/get_settings', methods=['GET'])
-def get_settings():
-    return jsonify(settings_state)
 
 @app.route('/api/battery-name', methods=['POST'])
 def set_battery_name():
@@ -55,6 +24,8 @@ def set_battery_name():
     ref = db.reference(f'BatteryNames/{tag_id}')
     ref.set(name)
     return jsonify({"status": "success", "tag_id": tag_id, "name": name})
+
+# this is not working i need to fix it
 
 
 
