@@ -5,13 +5,12 @@ from waitress import serve
 from firebase_admin import db 
 from input_listener import handle_serial, listen_rfid
 import threading
+import os
+from dotenv import load_dotenv
 
 
 app = Flask(__name__)
 
-@app.route('/')
-def index():
-    return render_template('index.html')
 
 @app.route('/api/battery-name', methods=['POST'])
 def set_battery_name():
@@ -26,6 +25,19 @@ def set_battery_name():
     return jsonify({"status": "success", "tag_id": tag_id, "name": name})
 
 # this is not working i need to fix it
+
+
+load_dotenv()
+
+@app.route('/')
+def index():
+    firebase_config = {
+        "apiKey": os.getenv("FIREBASE_API_KEY"),
+        "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
+        "databaseURL": os.getenv("FIREBASE_DB_URL"),
+        "projectId": os.getenv("FIREBASE_PROJECT_ID")
+    }
+    return render_template("index.html", firebase_config=firebase_config)
 
 
 
