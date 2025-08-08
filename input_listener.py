@@ -1,4 +1,5 @@
 from datetime import datetime
+from numpy import record
 import serial
 import threading
 import time
@@ -96,26 +97,31 @@ def handle_serial():
                     slot_status[slot]["tag"] = matched_tag
                     pending_tags.remove((matched_tag, t_time))
 
+                    #Add the newly scanned battery/tag to the 'CurrentChargingList' to show as actively charging
                     ref.child('CurrentChargingList/' + matched_tag).update({
                         'ID': matched_tag,
-                        'ChargingStartTime': timestamp(now),
+                        'ChargingStartTime': timestamp(now), #Use this timestamp to later determine how long it's been charging for
                     })
 
+                    #Pull all records of charging for this battery/tag
                     getCurrentChargingRecords = ref.child('BatteryList/' + matched_tag + '/ChargingRecords').get()
-                    if getCurrentChargingRecords is None:
-                      getCurrentChargingRecords = []
-                      getCurrentChargingRecords.append({'startTime': timestamp(now),'ChargingSlot': slot,'id' : 0})
-                    else:
-                      getCurrentChargingRecords.append({'startTime': timestamp(now),'ChargingSlot': slot,'id': len(getCurrentChargingRecords)})
 
+                    if getCurrentChargingRecords is None: #Incase this is the first charge record for this battery/tag
+                      getCurrentChargingRecords = [] #Start with an empty array
+                      getCurrentChargingRecords.append({'StartTime': timestamp(now),'ChargingSlot': slot,'ID' : 0}) #Append the first record with the current start time and slot
+
+                    else: #Otherwise  append a new record with the current start time and slot
+                      getCurrentChargingRecords.append({'StartTime': timestamp(now),'ChargingSlot': slot,'ID': len(getCurrentChargingRecords)})
+
+                    #Update the battery within firebase with the new charging data
                     ref.child('BatteryList/' + matched_tag).update({
-                        'ID': matched_tag,
-                        'ChargingRecords': getCurrentChargingRecords,
-                        'IsCharging': True,
-                        'ChargingSlot': slot,
-                        'ChargingStartTime': timestamp(now),
-                        'ChargingEndTime': None,
-                        'LastChargingSlot': None,
+                        'ID': matched_tag, #Battery Tag ID
+                        'ChargingRecords': getCurrentChargingRecords, #Pass in new array with appended record
+                        'IsCharging': True, #Set charging as true
+                        'ChargingSlot': slot, #Current slot the battery is charging in
+                        'ChargingStartTime': timestamp(now), #When was the most recent time it started charging - used to determine how long it's been charging for/Now time
+                        'ChargingEndTime': None, #Remove the ChargingEndTime as it's currently charging
+                        'LastChargingSlot': None, #Remove the LastChargingSlot as it's currently charging
                     })
                     
                     # Check if battery has a name in BatteryNames
@@ -123,8 +129,8 @@ def handle_serial():
                     if not name_ref.get():
                         # Trigger the frontend to prompt naming
                         ref.child(f'NameRequests/{matched_tag}').set({
-                            'slot': slot,
-                            'timestamp': timestamp(now)
+                            'Slot': slot,
+                            'Timestamp': timestamp(now)
                         })
 
 
@@ -133,28 +139,63 @@ def handle_serial():
                     print(f"[REMOVED] Tag {prev_tag} removed from slot {slot} at {timestamp(now)}")
                     slot_status[slot]["tag"] = None
 
-                    currentBatteryData = ref.child('BatteryList/' + prev_tag).get()
-                    if currentBatteryData:
-                        chargingStart = currentBatteryData.get('ChargingStartTime')
-                        chargingSlot = currentBatteryData.get('ChargingSlot')
-
+                    # Remove the newly removed battery/tag from the 'CurrentChargingList' to show as no longer actively charging
                     ref.child('CurrentChargingList/' + prev_tag).delete()
 
+                    #Get the current (Now removed) charging slot for this battery/tag
+                    chargingSlot = ref.child(f'BatteryList/{prev_tag}/ChargingSlot').get()
+                  
+                    #Pull all records of charging for this battery/tag
                     getCurrentChargingRecords = ref.child('BatteryList/' + prev_tag + '/ChargingRecords').get()
-                    count = len(getCurrentChargingRecords) if getCurrentChargingRecords else 0
-                    ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{count-1}').update({'endtime': timestamp(now)})
+
+                    #Count the number of existing records to determine the ID of the most recent record
+                    count = len(getCurrentChargingRecords) if getCurrentChargingRecords else 0 #Set to 0 if this is the first record for firebase 'array'
+
+                    #Determine the total number of total charge cycles for this battery/tag
+                    totalCycles = len(getCurrentChargingRecords) if getCurrentChargingRecords else 1 #Set to 1 if this is the first record for firebase 'array'
+
+                    startTime = ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{count-1}/StartTime').get() #Pull the start time of the most recent record to determine duration
+                    endTime = timestamp(now) #Set the end time as now since it's just been removed
+
+                    endTime = datetime.strptime(endTime, "%Y-%m-%d %H:%M:%S") #Convert to datetime object
+                    startTime = datetime.strptime(startTime, "%Y-%m-%d %H:%M:%S") #Convert to datetime object
+                    duration = endTime - startTime #Determine the duration between start and end time 
+
+                    #Update the most recent record with the end time and duration, count-1 is used to get the most recent record since arrays are 0 indexed in Firebase
+                    ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{count-1}').update({'EndTime': endTime, 'Duration': str(duration.total_seconds())[:-2]}) #Duration is saved in SECONDS with removing the default '.0' left with the total_seconds method I.E '30.0' seconds is saved as '30'
+
+
+                    #Remove the last record from the array to prevent it from being counted twice
+                    #This last record is the one just updated, however is currently stored locally without duration/endtime
+                    #Basically, remove the incomplete record from the local copy of the records array to then later add the completed record locally
+                    del getCurrentChargingRecords[-1]
+
+                    #Due to not waiting on confirmation from firebase that the above update has been made, manually append the end time and duration to the local copy of the records array
+                    getCurrentChargingRecords.append({'StartTime': startTime,'EndTime': endTime,'Duration': str(duration.total_seconds())[:-2]})
+
+                    #Calculate the overall charge time and average charge time
+                    #Note, everything is in SECONDS
+                    overallDuration = 0
+                    for record in getCurrentChargingRecords:
+                        overallDuration += record.get('Duration') #Overall charge time is the sum of all durations in the records array
+
+                    avgDuration = overallDuration/count   #Average charge time is the overall charge time divided by the number of cycles
+                    avgDuration = "{:.0f}".format(avgDuration) #Format to remove decimal places, this also rounds DOWN by removing the decimal places
 
                     ref.child('BatteryList/' + prev_tag).update({
                         'ID': prev_tag,
-                        'IsCharging': False,
-                        'ChargingSlot': None,
-                        'LastChargingSlot': chargingSlot,
-                        'ChargingEndTime': timestamp(now),
-                        'ChargingStartTime': None,
-                        'LastOverallChargeTime': 0
+                        'IsCharging': False, #Set charging as false
+                        'ChargingSlot': None, #Remove the ChargingSlot as it's no longer charging
+                        'LastChargingSlot': chargingSlot, #Set the last charging slot to the current slot it was charging in
+                        'ChargingEndTime': timestamp(now), #When was the most recent time it was on a charger
+                        'ChargingStartTime': None, #Remove the ChargingStartTime as it's no longer charging
+                        'LastOverallChargeTime': duration, #Set the last overall charge time to the duration of the most recent charge 
+                        'TotalCycles' : totalCycles, #Total number of charge cycles for this battery/tag
+                        'AverageChargeTime': avgDuration, #Average charge time in seconds
+                        'OverallChargeTime': overallDuration, #Overall lifetime charge time in seconds
                     })
 
-#ALEX DO NOT USE .SET ANYMORE DINGUS ONLY USE .UPDATE BRO
+#ALEX DO NOT USE .SET ANYMORE DINGUS ONLY USE .UPDATE BRO - Jackson 8/7/2025
 
 # === RFID LISTENER THREAD ===
 def on_key_press(key):
