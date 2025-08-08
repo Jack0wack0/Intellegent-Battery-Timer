@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-database-compat.js"></script>
+  <script>window.firebaseConfig = {{ firebase_config | tojson }}</script>
   <script src="{{ url_for('static', filename='main.js') }}"></script>
 </head>
 
@@ -117,7 +118,5 @@
       <button onclick="submitBatteryName()">Save Name</button>
     </div>
 </div>
-
-
 </body>
 </html>
