@@ -151,9 +151,6 @@ def handle_serial():
                     #Count the number of existing records to determine the ID of the most recent record
                     count = len(getCurrentChargingRecords) if getCurrentChargingRecords else 0 #Set to 0 if this is the first record for firebase 'array'
 
-                    #Determine the total number of total charge cycles for this battery/tag
-                    totalCycles = len(getCurrentChargingRecords) if getCurrentChargingRecords else 1 #Set to 1 if this is the first record for firebase 'array'
-
                     startTime = ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{count-1}/StartTime').get() #Pull the start time of the most recent record to determine duration
                     endTime = timestamp(now) #Set the end time as now since it's just been removed
                     endTimeStamp = timestamp(now) #Set the end time as now since it's just been removed
@@ -178,11 +175,20 @@ def handle_serial():
                     #Calculate the overall charge time and average charge time
                     #Note, everything is in SECONDS
                     overallDuration = 0
-                    for record in getCurrentChargingRecords:
-                        overallDuration += int(record.get('Duration')) #Overall charge time is the sum of all durations in the records array
+                    avgDuration = 0
+                    totalCycles = 0 #Get the total number of cycles for this battery/tag
+
+                    minTimeSetting = ref.child(f'Settings/minTime').get() #Get the minimum time settings for the battery
+
+                    for record in getCurrentChargingRecords: #Loop through all records for this battery/tag
                         
-                    avgDuration = overallDuration/count   #Average charge time is the overall charge time divided by the number of cycles
-                    avgDuration = "{:.0f}".format(avgDuration) #Format to remove decimal places, this also rounds DOWN by removing the decimal places
+                        if float(record['Duration']) >= int(minTimeSetting): #Only count records that are above the minimum time setting
+                            totalCycles += 1 #Increment the total cycles for this battery/tag
+                            overallDuration += int(record.get('Duration')) #Overall charge time is the sum of all durations in the records array
+
+                    if totalCycles > 0:    
+                      avgDuration = overallDuration/totalCycles   #Average charge time is the overall charge time divided by the number of cycles
+                      avgDuration = "{:.0f}".format(avgDuration) #Format to remove decimal places, this also rounds DOWN by removing the decimal places
 
                     ref.child('BatteryList/' + prev_tag).update({
                         'ID': prev_tag,
