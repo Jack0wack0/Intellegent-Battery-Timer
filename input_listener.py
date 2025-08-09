@@ -40,11 +40,14 @@ def timestamp(ts=None):
 
 # === SERIAL HANDLER THREAD ===
 def handle_serial():
-    try:
-        ser = serial.Serial(COM_PORT1, BAUD_RATE)
-    except Exception as e:
-        print(f"[Serial Port Error] {e}")
-        return
+    while True:    
+        try:
+            ser = serial.Serial(COM_PORT1, BAUD_RATE)
+            break
+        except Exception as e:
+            print(f"[Serial Port Error] {e} retrying in 5 seconds") #functionality to retry the serial port if the specified arduino isnt detected.
+            time.sleep(5)
+
 
     while True:
         try:
@@ -95,8 +98,13 @@ def handle_serial():
                 if matched_tag:
                     print(f"[MATCH] Tag {matched_tag} matched to slot {slot} at {timestamp(now)}")
                     slot_status[slot]["tag"] = matched_tag
-                    pending_tags.remove((matched_tag, t_time))
-
+                    
+                    #if pending_tags changes between finding and removing it will raise value error. this is safer i think
+                    try:
+                        pending_tags.remove((matched_tag, t_time))
+                    except ValueError:
+                        pass
+                    
                     #Add the newly scanned battery/tag to the 'CurrentChargingList' to show as actively charging
                     ref.child('CurrentChargingList/' + matched_tag).update({
                         'ID': matched_tag,
