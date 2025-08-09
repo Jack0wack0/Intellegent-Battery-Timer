@@ -1,5 +1,4 @@
 from datetime import datetime
-from numpy import record
 import serial
 import threading
 import time
@@ -14,7 +13,8 @@ from dotenv import load_dotenv
 # === CONFIGURATION ===
 load_dotenv()
 
-COM_PORT = "COM4"
+COM_PORT1 = "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_85733323639351C0E070-if00" #using the serial interface of the actual arduino is much better as it will presist even over USB port switches!
+COM_PORT2 = "unused currently ill fix it later"
 BAUD_RATE = 9600
 MATCH_WINDOW_SECONDS = 1.0
 FIREBASE_DB_BASE_URL = getenv('FIREBASE_DB_BASE_URL')
@@ -41,7 +41,7 @@ def timestamp(ts=None):
 # === SERIAL HANDLER THREAD ===
 def handle_serial():
     try:
-        ser = serial.Serial(COM_PORT, BAUD_RATE)
+        ser = serial.Serial(COM_PORT1, BAUD_RATE)
     except Exception as e:
         print(f"[Serial Port Error] {e}")
         return
