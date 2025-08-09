@@ -2,7 +2,7 @@ from datetime import datetime
 import serial
 import threading
 import time
-from pynput import keyboard
+
 import os
 from os import getenv
 import firebase_admin
@@ -217,26 +217,16 @@ def handle_serial():
 #ALEX DO NOT USE .SET ANYMORE DINGUS ONLY USE .UPDATE BRO - Jackson 8/7/2025
 
 # === RFID LISTENER THREAD ===
-def on_key_press(key):
-    global tag_buffer
-    try:
-        if hasattr(key, 'char') and key.char and key.char.isdigit():
-            tag_buffer += key.char
-        elif key == keyboard.Key.enter:
-            if len(tag_buffer) >= 10:
-                tag_id = tag_buffer[-10:]  # Take last 10 digits
-                now = time.time()
-                with lock:
-                    pending_tags.append((tag_id, now))
-                    print(f"[RFID] Tag Read: {tag_id} at {timestamp(now)}")
-            tag_buffer = ""
-    except Exception:
-        pass
 
 def listen_rfid():
-    listener = keyboard.Listener(on_press=on_key_press)
-    listener.daemon = True
-    listener.start()
+    while True:
+        tag_buffer = input().strip()
+        if tag_buffer.isdigit() and len(tag_buffer) >= 10:
+            tag_id = tag_buffer[-10:]
+            now = time.time()
+            with lock:
+                pending_tags.append((tag_id, now))
+                print(f"[RFID] Tag Read: {tag_id} at {timestamp(now)}")
 
 # === MAIN ===
 if __name__ == "__main__":
