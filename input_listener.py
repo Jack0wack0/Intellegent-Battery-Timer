@@ -44,6 +44,7 @@ def handle_serial():
         try:
             ser = serial.Serial(COM_PORT1, BAUD_RATE)
             print(f"[SERIAL] Serial connected at {COM_PORT1}")
+            print("[STATUS] Ready")
             break
         except Exception as e:
             print(f"[SERIAL] error {e} retrying in 5 seconds") #functionality to retry the serial port if the specified arduino isnt detected.
