@@ -2,7 +2,7 @@ from datetime import datetime
 import serial
 import threading
 import time
-
+import json
 import os
 from os import getenv
 import firebase_admin
@@ -12,9 +12,11 @@ from dotenv import load_dotenv
 
 # === CONFIGURATION ===
 load_dotenv()
+with open("hardwareIDS.json") as hardwareID:
+    blahblah = json.load(hardwareID)
 
-COM_PORT1 = "/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_85733323639351C0E070-if00" #using the serial interface of the actual arduino is much better as it will presist even over USB port switches!
-COM_PORT2 = "unused currently ill fix it later"
+COM_PORT1 = blahblah["COM_PORT1"]
+COM_PORT2 = blahblah["COM_PORT2"]
 BAUD_RATE = 9600
 MATCH_WINDOW_SECONDS = 1.0
 FIREBASE_DB_BASE_URL = getenv('FIREBASE_DB_BASE_URL')
