@@ -12,13 +12,15 @@ from dotenv import load_dotenv
 
 # === CONFIGURATION ===
 load_dotenv()
+
+#open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
 with open("hardwareIDS.json") as hardwareID:
     blahblah = json.load(hardwareID)
 
-COM_PORT1 = blahblah["COM_PORT1"]
+COM_PORT1 = blahblah["COM_PORT1"] #init com ports
 COM_PORT2 = blahblah["COM_PORT2"]
 BAUD_RATE = 9600
-MATCH_WINDOW_SECONDS = 1.0
+MATCH_WINDOW_SECONDS = 1.0 #change to adjust the window for matching slots and RFID ID numbers.
 FIREBASE_DB_BASE_URL = getenv('FIREBASE_DB_BASE_URL')
 FIREBASE_CREDS_FILE = getenv('FIREBASE_CREDS_FILE')
 
@@ -41,11 +43,13 @@ def timestamp(ts=None):
     return datetime.fromtimestamp(ts or time.time()).strftime("%Y-%m-%d %H:%M:%S")
 
 # === SERIAL HANDLER THREAD ===
-def handle_serial():
+#literally just starts listening to the arduinos and when it detects a change start a match
+
+def handle_serial(Serialport):
     while True:    
         try:
-            ser = serial.Serial(COM_PORT1, BAUD_RATE)
-            print(f"[SERIAL] Serial connected at {COM_PORT1}")
+            ser = serial.Serial(Serialport, BAUD_RATE) #opens the serial port
+            print(f"[SERIAL] Serial connected at {Serialport}")
             print("[STATUS] Ready")
             break
         except Exception as e:
@@ -55,7 +59,7 @@ def handle_serial():
 
     while True:
         try:
-            raw_line = ser.readline().decode("utf-8").strip()
+            raw_line = ser.readline().decode("utf-8").strip() #specifies the character scheme
         except Exception:
             continue
 
@@ -229,6 +233,7 @@ def handle_serial():
 #ALEX DO NOT USE .SET ANYMORE DINGUS ONLY USE .UPDATE BRO - Jackson 8/7/2025
 
 # === RFID LISTENER THREAD ===
+# essentially all this does is look for a 10 digit string of numbers coming in from the keyboard. if it detects it, add it to pending_tags.
 
 def listen_rfid():
     while True:
@@ -241,8 +246,10 @@ def listen_rfid():
                 print(f"[RFID] Tag Read: {tag_id} at {timestamp(now)}")
 
 # === MAIN ===
+
 if __name__ == "__main__":
-    threading.Thread(target=handle_serial, daemon=True).start()
+    threading.Thread(target=handle_serial, args=(COM_PORT1,), daemon=True).start() #args is now the com port for each arduino, kept in hardwareIDS.json. This is so we can listen to both arduinos
+    threading.Thread(target=handle_serial, args=(COM_PORT2,), daemon=True).start() 
     listen_rfid()
 
     # Keep alive
