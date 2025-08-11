@@ -206,7 +206,7 @@ def handle_serial(Serialport):
                       avgDuration = overallDuration/totalCycles   #Average charge time is the overall charge time divided by the number of cycles
                       avgDuration = "{:.0f}".format(avgDuration) #Format to remove decimal places, this also rounds DOWN by removing the decimal places
 
-                    if int(str(duration.total_seconds())[:-2]) < minTimeSetting:
+                    if int(str(duration.total_seconds())[:-2]) < int(minTimeSetting):
                         ref.child('BatteryList/' + prev_tag).update({
                         'ID': prev_tag,
                         'IsCharging': False, #Set charging as false
