@@ -130,7 +130,8 @@ def handle_serial():
                         # Trigger the frontend to prompt naming
                         ref.child(f'NameRequests/{matched_tag}').set({
                             'Slot': slot,
-                            'Timestamp': timestamp(now)
+                            'Timestamp': timestamp(now),
+                            'ID': matched_tag
                         })
 
 
