@@ -15,10 +15,10 @@ load_dotenv()
 
 #open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
 with open("hardwareIDS.json") as hardwareID:
-    blahblah = json.load(hardwareID)
+    RemoteID = json.load(hardwareID)
 
-COM_PORT1 = blahblah["COM_PORT1"] #init com ports
-COM_PORT2 = blahblah["COM_PORT2"]
+COM_PORT1 = RemoteID["COM_PORT1"] #init com ports
+COM_PORT2 = RemoteID["COM_PORT2"] 
 BAUD_RATE = 9600
 MATCH_WINDOW_SECONDS = 1.0 #change to adjust the window for matching slots and RFID ID numbers.
 FIREBASE_DB_BASE_URL = getenv('FIREBASE_DB_BASE_URL')

@@ -1,0 +1,3 @@
+pyserial
+firebase-admin
+python-dotenv
