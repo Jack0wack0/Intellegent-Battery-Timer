@@ -1,10 +1,8 @@
 from datetime import datetime
-from numpy import record
 import serial
 import threading
 import time
 from pynput import keyboard
-import os
 from os import getenv
 import firebase_admin
 from firebase_admin import credentials
