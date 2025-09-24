@@ -52,7 +52,7 @@ WorkingDirectory=/home/admin/tagtracker
 WantedBy=graphical.target
 EOF
 
-sudo systemctl enable tagtracker.service
+
 
 # Open a web browser on boot
 echo "[*] Setting up browser boot..."
@@ -73,7 +73,11 @@ Environment=XAUTHORITY=/home/admin/.Xauthority
 WantedBy=graphical.target
 EOF
 
+sudo systemctl daemon-reload
+sudo systemctl enable tagtracker.service
 sudo systemctl enable browser.service
+sudo systemctl start tagtracker.service
+sudo systemctl start browser.service
 
 echo "[*] Installation complete! Reboot to start the program."
 echo "=====> YOU MUST CREATE hardwareIDS.json THAT CONTAINS THE PATH FOR YOUR ARDUINOS FOR THE PROGRAM TO WORK!!! <====="
