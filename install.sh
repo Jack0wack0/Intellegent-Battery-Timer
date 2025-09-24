@@ -13,12 +13,12 @@ pip3 install -r requirements.txt
 
 echo "[*] Setting up project folder..."
 mkdir -p /home/pi/tagtracker
-cp myscript.py /home/pi/tagtracker/
-cp requirements.txt /home/pi/tagtracker/
+cp myscript.py /home/admin/tagtracker/
+cp requirements.txt /home/admin/tagtracker/
 
 # Copy .env if you use one
 if [ -f .env ]; then
-  cp .env /home/pi/tagtracker/
+  cp .env /home/admin/tagtracker/
 fi
 
 # Firebase credentials
@@ -27,12 +27,12 @@ read -p "Enter your Firebase Realtime Database URL: " FIREBASE_DB_BASE_URL
 read -p "Enter the full path to your Firebase service account JSON file: " FIREBASE_CREDS_FILE
 
 # Create .env file
-cat <<EOF > /home/pi/myproject/.env
+cat <<EOF > /home/admin/myproject/.env
 FIREBASE_DB_BASE_URL=$FIREBASE_DB_BASE_URL
 FIREBASE_CREDS_FILE=$FIREBASE_CREDS_FILE
 EOF
 
-echo "[*] Saved credentials to /home/pi/myproject/.env"
+echo "[*] Saved credentials to /home/admin/myproject/.env"
 
 # Setup systemd service 
 echo "[*] Installing systemd service..."
@@ -42,12 +42,12 @@ Description=TagTrackerFirebase
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/tagtracker/input_listener.py
+ExecStart=/usr/bin/python3 /home/admin/tagtracker/input_listener.py
 Restart=always
-User=pi
+User=admin
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/pi/.Xauthority
-WorkingDirectory=/home/pi/tagtracker
+Environment=XAUTHORITY=/home/admin/.Xauthority
+WorkingDirectory=/home/admin/tagtracker
 
 [Install]
 WantedBy=graphical.target
@@ -66,9 +66,9 @@ After=graphical.target
 [Service]
 ExecStart=chromium-browser --noerrdialogs --disable-infobars --kiosk https://$BOOTWEBSITE
 Restart=always
-User=pi
+User=admin
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/pi/.Xauthority
+Environment=XAUTHORITY=/home/admin/.Xauthority
 
 [Install]
 WantedBy=graphical.target
