@@ -13,8 +13,7 @@ pip3 install --break-system-packages -r requirements.txt
 
 echo "[*] Setting up project folder..."
 mkdir -p /home/admin/tagtracker
-cp input_listener.py /home/admin/tagtracker/
-cp requirements.txt /home/admin/tagtracker/
+PROJECT_DIR=/home/pi/tagtracker
 
 # Copy .env if you use one
 if [ -f .env ]; then
