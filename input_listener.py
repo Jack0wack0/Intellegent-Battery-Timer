@@ -2,7 +2,7 @@ from datetime import datetime
 import serial
 import threading
 import time
-from pynput import keyboard
+import json
 from os import getenv
 import firebase_admin
 from firebase_admin import credentials
@@ -12,9 +12,14 @@ from dotenv import load_dotenv
 # === CONFIGURATION ===
 load_dotenv()
 
-COM_PORT = "COM4"
+#open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
+with open("hardwareIDS.json") as hardwareID:
+    RemoteID = json.load(hardwareID)
+
+COM_PORT1 = RemoteID["COM_PORT1"] #init com ports
+COM_PORT2 = RemoteID["COM_PORT2"] 
 BAUD_RATE = 9600
-MATCH_WINDOW_SECONDS = 1.0
+MATCH_WINDOW_SECONDS = 1.0 #change to adjust the window for matching slots and RFID ID numbers.
 FIREBASE_DB_BASE_URL = getenv('FIREBASE_DB_BASE_URL')
 FIREBASE_CREDS_FILE = getenv('FIREBASE_CREDS_FILE')
 
@@ -37,16 +42,23 @@ def timestamp(ts=None):
     return datetime.fromtimestamp(ts or time.time()).strftime("%Y-%m-%d %H:%M:%S")
 
 # === SERIAL HANDLER THREAD ===
-def handle_serial():
-    try:
-        ser = serial.Serial(COM_PORT, BAUD_RATE)
-    except Exception as e:
-        print(f"[Serial Port Error] {e}")
-        return
+#literally just starts listening to the arduinos and when it detects a change start a match
+
+def handle_serial(Serialport):
+    while True:    
+        try:
+            ser = serial.Serial(Serialport, BAUD_RATE) #opens the serial port
+            print(f"[SERIAL] Serial connected at {Serialport}")
+            print("[STATUS] Ready")
+            break
+        except Exception as e:
+            print(f"[SERIAL] error {e} retrying in 5 seconds") #functionality to retry the serial port if the specified arduino isnt detected.
+            time.sleep(5)
+
 
     while True:
         try:
-            raw_line = ser.readline().decode("utf-8").strip()
+            raw_line = ser.readline().decode("utf-8").strip() #specifies the character scheme
         except Exception:
             continue
 
@@ -93,8 +105,13 @@ def handle_serial():
                 if matched_tag:
                     print(f"[MATCH] Tag {matched_tag} matched to slot {slot} at {timestamp(now)}")
                     slot_status[slot]["tag"] = matched_tag
-                    pending_tags.remove((matched_tag, t_time))
-
+                    
+                    #if pending_tags changes between finding and removing it will raise value error. this is safer i think
+                    try:
+                        pending_tags.remove((matched_tag, t_time))
+                    except ValueError:
+                        pass
+                    
                     #Add the newly scanned battery/tag to the 'CurrentChargingList' to show as actively charging
                     ref.child('CurrentChargingList/' + matched_tag).update({
                         'ID': matched_tag,
@@ -189,7 +206,7 @@ def handle_serial():
                       avgDuration = overallDuration/totalCycles   #Average charge time is the overall charge time divided by the number of cycles
                       avgDuration = "{:.0f}".format(avgDuration) #Format to remove decimal places, this also rounds DOWN by removing the decimal places
 
-                    if int(str(duration.total_seconds())[:-2]) < minTimeSetting:
+                    if int(str(duration.total_seconds())[:-2]) < int(minTimeSetting):
                         ref.child('BatteryList/' + prev_tag).update({
                         'ID': prev_tag,
                         'IsCharging': False, #Set charging as false
@@ -216,33 +233,25 @@ def handle_serial():
 #ALEX DO NOT USE .SET ANYMORE DINGUS ONLY USE .UPDATE BRO - Jackson 8/7/2025
 
 # === RFID LISTENER THREAD ===
-def on_key_press(key):
-    global tag_buffer
-    try:
-        if hasattr(key, 'char') and key.char and key.char.isdigit():
-            tag_buffer += key.char
-        elif key == keyboard.Key.enter:
-            if len(tag_buffer) >= 10:
-                tag_id = tag_buffer[-10:]  # Take last 10 digits
-                now = time.time()
-                with lock:
-                    pending_tags.append((tag_id, now))
-                    print(f"[RFID] Tag Read: {tag_id} at {timestamp(now)}")
-            tag_buffer = ""
-    except Exception:
-        pass
+# essentially all this does is look for a 10 digit string of numbers coming in from the keyboard. if it detects it, add it to pending_tags.
 
 def listen_rfid():
-    listener = keyboard.Listener(on_press=on_key_press)
-    listener.daemon = True
-    listener.start()
+    while True:
+        tag_buffer = input().strip()
+        if tag_buffer.isdigit() and len(tag_buffer) >= 10:
+            tag_id = tag_buffer[-10:]
+            now = time.time()
+            with lock:
+                pending_tags.append((tag_id, now))
+                print(f"[RFID] Tag Read: {tag_id} at {timestamp(now)}")
 
 # === MAIN ===
+
 if __name__ == "__main__":
-    threading.Thread(target=handle_serial, daemon=True).start()
+    threading.Thread(target=handle_serial, args=(COM_PORT1,), daemon=True).start() #args is now the com port for each arduino, kept in hardwareIDS.json. This is so we can listen to both arduinos
+    threading.Thread(target=handle_serial, args=(COM_PORT2,), daemon=True).start() 
     listen_rfid()
 
     # Keep alive
     while True:
         time.sleep(1)
-
