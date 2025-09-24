@@ -3,7 +3,6 @@ import serial
 import threading
 import time
 import json
-import os
 from os import getenv
 import firebase_admin
 from firebase_admin import credentials
