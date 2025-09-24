@@ -9,7 +9,7 @@ echo "[*] Installing dependencies..."
 sudo apt-get install -y python3 python3-pip chromium-browser
 
 echo "[*] Installing Python requirements..."
-pip3 install -r requirements.txt
+pip3 install --break-system-packages -r requirements.txt
 
 echo "[*] Setting up project folder..."
 mkdir -p /home/pi/tagtracker
