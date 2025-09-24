@@ -13,7 +13,7 @@ pip3 install --break-system-packages -r requirements.txt
 
 echo "[*] Setting up project folder..."
 mkdir -p /home/admin/tagtracker
-cp myscript.py /home/admin/tagtracker/
+cp input_listener.py /home/admin/tagtracker/
 cp requirements.txt /home/admin/tagtracker/
 
 # Copy .env if you use one
@@ -27,12 +27,12 @@ read -p "Enter your Firebase Realtime Database URL: " FIREBASE_DB_BASE_URL
 read -p "Enter the full path to your Firebase service account JSON file: " FIREBASE_CREDS_FILE
 
 # Create .env file
-cat <<EOF > /home/admin/myproject/.env
+cat <<EOF > /home/admin/tagtracker/.env
 FIREBASE_DB_BASE_URL=$FIREBASE_DB_BASE_URL
 FIREBASE_CREDS_FILE=$FIREBASE_CREDS_FILE
 EOF
 
-echo "[*] Saved credentials to /home/admin/myproject/.env"
+echo "[*] Saved credentials to /home/admin/tagtracker/.env"
 
 # Setup systemd service 
 echo "[*] Installing systemd service..."
