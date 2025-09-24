@@ -12,7 +12,7 @@ echo "[*] Installing Python requirements..."
 pip3 install --break-system-packages -r requirements.txt
 
 echo "[*] Setting up project folder..."
-mkdir -p /home/pi/tagtracker
+mkdir -p /home/admin/tagtracker
 cp myscript.py /home/admin/tagtracker/
 cp requirements.txt /home/admin/tagtracker/
 
