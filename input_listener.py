@@ -51,6 +51,8 @@ HUE_GREEN = 85
 POLL_INTERVAL = 0.5      # seconds between DB polls
 HEARTBEAT_INTERVAL = 2.0 # seconds between PING heartbeats
 last_sent_command = {}   # slot -> (mode, hue, pos) to reduce redundant writes
+MAX_RETRIES = 3
+ACK_TIMEOUT = 2.0  # seconds
 
 # === UTILITY ===
 def timestamp(ts=None):
@@ -295,15 +297,11 @@ def listen_rfid():
             
 
 # === LED MANAGER THREAD (ADDED) ===
+
+
 def led_manager_loop():
-    """
-    Poll firebase every POLL_INTERVAL seconds, determine each slot's state, and send LED commands.
-    Heartbeat 'PING' sent every HEARTBEAT_INTERVAL seconds to keep LEDs alive.
-    """
     last_heartbeat = 0.0
 
-    # Wait until COM_PORT1 serial is opened by handle_serial
-    # This avoids opening the same port twice and ensures we reuse the port in handle_serial.
     while True:
         with serial_ports_lock:
             ser = serial_ports.get(COM_PORT1)
@@ -312,37 +310,39 @@ def led_manager_loop():
         print("[LED] Waiting for COM_PORT1 to be opened by handle_serial...")
         time.sleep(0.5)
 
+    def wait_for_ack(timeout=ACK_TIMEOUT):
+        """Wait for 'ACK' or 'OK' from Arduino with a timeout."""
+        start = time.time()
+        while time.time() - start < timeout:
+            if ser.in_waiting:
+                try:
+                    line = ser.readline().decode().strip()
+                    if line in ("ACK", "OK"):
+                        return True
+                except Exception:
+                    pass
+            time.sleep(0.05)
+        return False
+
     while True:
         loop_start = time.time()
 
-        # Heartbeat if needed
         if (time.time() - last_heartbeat) >= HEARTBEAT_INTERVAL:
-            ok = safe_write_serial(COM_PORT1, "PING\n")
-            if ok:
-                last_heartbeat = time.time()
+            safe_write_serial(COM_PORT1, "PING\n")
+            last_heartbeat = time.time()
 
-        # Read minTime from settings
         try:
-            min_time_setting = ref.child('Settings/minTime').get()
-            if min_time_setting is None:
-                min_time_setting = 0
-            else:
-                min_time_setting = int(min_time_setting)
+            min_time_setting = int(ref.child('Settings/minTime').get() or 0)
         except Exception:
             min_time_setting = 0
 
         now = time.time()
-
-        # Copy slot_status under lock so we don't hold lock while hitting firebase
         with lock:
             local_slot_status = dict(slot_status)
 
-        slot_evaluations = {}
         current_charging = ref.child('CurrentChargingList').get() or {}
 
-        # helper: find tag for slot via CurrentChargingList/BatteryList if not in local slot_status
         def find_tag_for_slot_db(slot):
-            # check CurrentChargingList for tags whose BatteryList ChargingSlot matches
             if isinstance(current_charging, dict):
                 for tag in current_charging.keys():
                     try:
@@ -353,17 +353,15 @@ def led_manager_loop():
                         continue
             return None
 
+        slot_evaluations = {}
         for slot in range(7):
             entry = {"state": "AVAILABLE", "tag": None, "elapsed": None}
-
             ls = local_slot_status.get(slot)
             if ls and ls.get("state") == "PRESENT" and ls.get("tag"):
-                tag = ls.get("tag")
+                tag = ls["tag"]
                 entry["state"] = "PRESENT"
                 entry["tag"] = tag
-                cst = ref.child(f'BatteryList/{tag}/ChargingStartTime').get()
-                if not cst:
-                    cst = ref.child(f'CurrentChargingList/{tag}/ChargingStartTime').get()
+                cst = ref.child(f'BatteryList/{tag}/ChargingStartTime').get() or ref.child(f'CurrentChargingList/{tag}/ChargingStartTime').get()
                 epoch = parse_timestamp_to_epoch(cst) if cst else None
                 if epoch:
                     entry["elapsed"] = now - epoch
@@ -372,71 +370,60 @@ def led_manager_loop():
                 if tag:
                     entry["state"] = "PRESENT"
                     entry["tag"] = tag
-                    cst = ref.child(f'BatteryList/{tag}/ChargingStartTime').get()
-                    if not cst:
-                        cst = ref.child(f'CurrentChargingList/{tag}/ChargingStartTime').get()
+                    cst = ref.child(f'BatteryList/{tag}/ChargingStartTime').get() or ref.child(f'CurrentChargingList/{tag}/ChargingStartTime').get()
                     epoch = parse_timestamp_to_epoch(cst) if cst else None
                     if epoch:
                         entry["elapsed"] = now - epoch
-                else:
-                    entry["state"] = "AVAILABLE"
-                    entry["tag"] = None
-                    entry["elapsed"] = None
-
             slot_evaluations[slot] = entry
 
-        # Determine fully charged slots and pick-next
-        fully_charged_slots = []
-        for s, e in slot_evaluations.items():
-            if e["state"] == "PRESENT" and e["elapsed"] is not None and e["elapsed"] >= min_time_setting:
-                fully_charged_slots.append((s, e["elapsed"]))
+        fully_charged = [(s, e["elapsed"]) for s, e in slot_evaluations.items()
+                         if e["state"] == "PRESENT" and e["elapsed"] and e["elapsed"] >= min_time_setting]
+        pick_next_slot = max(fully_charged, key=lambda x: x[1])[0] if fully_charged else None
 
-        pick_next_slot = None
-        if fully_charged_slots:
-            fully_charged_slots.sort(key=lambda x: x[1], reverse=True)
-            pick_next_slot = fully_charged_slots[0][0]
-
-        # Send LED commands
         for slot in range(7):
             ev = slot_evaluations[slot]
             if ev["state"] == "AVAILABLE":
-                mode = "PULSE"
-                hue = HUE_ORANGE
+                mode, hue = "PULSE", HUE_ORANGE
             elif ev["state"] == "PRESENT":
-                if ev["elapsed"] is not None and ev["elapsed"] >= min_time_setting:
+                if ev["elapsed"] and ev["elapsed"] >= min_time_setting:
                     if slot == pick_next_slot:
-                        mode = "DEEPPULSE"
-                        hue = HUE_GREEN
+                        mode, hue = "DEEPPULSE", HUE_GREEN
                     else:
-                        mode = "SOLID"
-                        hue = HUE_BLUE
+                        mode, hue = "SOLID", HUE_BLUE
                 else:
-                    mode = "SOLID"
-                    hue = HUE_RED
+                    mode, hue = "SOLID", HUE_RED
             else:
-                mode = "PULSE"
-                hue = HUE_ORANGE
+                mode, hue = "PULSE", HUE_ORANGE
 
             pos = POSITIONS[slot] if slot < len(POSITIONS) else 0
-            this_cmd_tuple = (mode, hue, pos)
+            this_cmd = (mode, hue, pos)
             last = last_sent_command.get(slot)
-            if last != this_cmd_tuple:
-                cmd_str = f"SEG {slot} POS {pos} COLOR {hue} MODE {mode}\n"
-                ok = safe_write_serial(COM_PORT1, cmd_str)
-                if ok:
-                    print(f"[LED] Sent: {cmd_str.strip()}")
-                    last_sent_command[slot] = this_cmd_tuple
-                else:
-                    print(f"[LED] Failed to send LED command for slot {slot} (serial not ready)")
-            time.sleep(2)
-            safe_write_serial(COM_PORT1, "PING\n")
-            
 
-        # Sleep until next poll
-        elapsed_loop = time.time() - loop_start
-        to_sleep = POLL_INTERVAL - elapsed_loop
-        if to_sleep > 0:
-            time.sleep(to_sleep)
+            if this_cmd != last:
+                cmd_str = f"SEG {slot} POS {pos} COLOR {hue} MODE {mode}\n"
+                retries = 0
+                while retries < MAX_RETRIES:
+                    if safe_write_serial(COM_PORT1, cmd_str):
+                        print(f"[LED] Sent: {cmd_str.strip()} (attempt {retries+1})")
+                        if wait_for_ack():
+                            last_sent_command[slot] = this_cmd
+                            break
+                        else:
+                            retries += 1
+                            print(f"[LED] No ACK received for slot {slot}, retrying ({retries}/{MAX_RETRIES})...")
+                            time.sleep(0.2)
+                    else:
+                        print(f"[LED] Failed to send command for slot {slot}")
+                        break
+                if retries >= MAX_RETRIES:
+                    print(f"[LED] ERROR: Failed to confirm slot {slot} command after {MAX_RETRIES} attempts.")
+
+            time.sleep(0.1)
+
+        elapsed = time.time() - loop_start
+        sleep_time = max(0, POLL_INTERVAL - elapsed)
+        time.sleep(sleep_time)
+
 
 
 # === MAIN ===
