@@ -43,7 +43,7 @@ serial_ports = {}            # port_str -> serial.Serial object
 serial_ports_lock = threading.Lock()
 
 # === LED CONFIG (ADDED) ===
-POSITIONS = [0, 10, 15, 20, 25, 30, 35]  #pos for 0-6. LED width is 5 LEDS. number is where the center LED is positioned at.
+POSITIONS = [10, 20, 30, 40, 50, 60, 70]  #pos for 0-6. LED width is 5 LEDS. number is where the center LED is positioned at.
 HUE_RED = 0
 HUE_ORANGE = 25
 HUE_BLUE = 170
@@ -429,6 +429,8 @@ def led_manager_loop():
                 else:
                     print(f"[LED] Failed to send LED command for slot {slot} (serial not ready)")
             time.sleep(2)
+            safe_write_serial(COM_PORT1, "PING\n")
+            
 
         # Sleep until next poll
         elapsed_loop = time.time() - loop_start
