@@ -94,6 +94,7 @@ def handle_serial(Serialport):
             ser = serial.Serial(Serialport, BAUD_RATE) #opens the serial port
             print(f"[SERIAL] Serial connected at {Serialport}")
             print("[STATUS] Ready")
+            time.sleep(1)
             # --- ADDED: publish opened serial object for other threads to use (LED manager)
             with serial_ports_lock:
                 serial_ports[Serialport] = ser
@@ -427,7 +428,7 @@ def led_manager_loop():
                     last_sent_command[slot] = this_cmd_tuple
                 else:
                     print(f"[LED] Failed to send LED command for slot {slot} (serial not ready)")
-                time.sleep(0.01)
+            time.sleep(0.1)
 
         # Sleep until next poll
         elapsed_loop = time.time() - loop_start
