@@ -439,7 +439,7 @@ def led_manager_loop():
 
 if __name__ == "__main__":
     threading.Thread(target=handle_serial, args=(COM_PORT1,), daemon=True).start() #args is now the com port for each arduino, kept in hardwareIDS.json. This is so we can listen to both arduinos
-    threading.Thread(target=handle_serial, args=(COM_PORT2,), daemon=True).start()
+    #threading.Thread(target=handle_serial, args=(COM_PORT2,), daemon=True).start()
 
     # Start the LED manager thread (reads DB and writes LED commands using the same COM_PORT1 serial object)
     threading.Thread(target=led_manager_loop, daemon=True).start()
