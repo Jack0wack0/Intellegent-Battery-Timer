@@ -77,7 +77,7 @@ def safe_write_serial_port_obj(ser, data):
     except Exception as e:
         print(f"[SERIAL WRITE ERROR] {e}")
         return False
-
+#
 def safe_write_serial(port, data):
     """Thread-safe write to a serial port if present in serial_ports map."""
     with serial_ports_lock:
