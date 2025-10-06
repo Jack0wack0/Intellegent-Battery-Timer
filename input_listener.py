@@ -53,6 +53,7 @@ HEARTBEAT_INTERVAL = 2.0 # seconds between PING heartbeats
 last_sent_command = {}   # slot -> (mode, hue, pos) to reduce redundant writes
 MAX_RETRIES = 3
 ACK_TIMEOUT = 2.0  # seconds
+ack_received = threading.Event()
 
 # === UTILITY ===
 def timestamp(ts=None):
@@ -110,6 +111,11 @@ def handle_serial(Serialport):
         try:
             raw_line = ser.readline().decode("utf-8").strip() #specifies the character scheme
         except Exception:
+            continue
+        
+        # --- ACK Handling ---
+        if raw_line == "ACK" or raw_line == "OK":
+            ack_received.set()
             continue
 
         if raw_line == "":
@@ -311,19 +317,8 @@ def led_manager_loop():
         time.sleep(0.5)
 
     def wait_for_ack(timeout=ACK_TIMEOUT):
-        start = time.time()
-        while time.time() - start < timeout:
-            if ser.in_waiting:
-                try:
-                    line = ser.readline().decode().strip()
-                    print(f"[DEBUG ACK] Received: '{line}'")
-                    if line == "ACK" or line == "OK":
-                        return True
-                except Exception as e:
-                    print(f"[ACK ERROR] {e}")
-            time.sleep(0.05)
-        print("[ACK] Timeout waiting for ACK")
-        return False
+        ack_received.clear()
+        return ack_received.wait(timeout=timeout)
 
     while True:
         loop_start = time.time()
