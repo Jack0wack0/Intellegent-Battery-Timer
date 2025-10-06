@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # === CONFIGURATION ===
 load_dotenv()
 
-#open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
+# open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
 with open("hardwareIDS.json") as hardwareID:
     RemoteID = json.load(hardwareID)
 
@@ -37,19 +37,66 @@ pending_tags = []  # list of (tag_id, timestamp) tuples
 lock = threading.Lock()
 tag_buffer = ""
 
+# === SERIAL SHARED OBJECTS (ADDED) ===
+# store opened serial.Serial objects here so the LED thread can reuse the same open port
+serial_ports = {}            # port_str -> serial.Serial object
+serial_ports_lock = threading.Lock()
+
+# === LED CONFIG (ADDED) ===
+POSITIONS = [0, 40, 80, 120, 160, 200, 240]  #pos for 0-6. LED width is 5 LEDS. number is where the center LED is positioned at.
+HUE_RED = 0
+HUE_ORANGE = 25
+HUE_BLUE = 170
+HUE_GREEN = 85
+POLL_INTERVAL = 0.5      # seconds between DB polls
+HEARTBEAT_INTERVAL = 4.0 # seconds between PING heartbeats
+last_sent_command = {}   # slot -> (mode, hue, pos) to reduce redundant writes
+
 # === UTILITY ===
 def timestamp(ts=None):
     return datetime.fromtimestamp(ts or time.time()).strftime("%Y-%m-%d %H:%M:%S")
+
+def parse_timestamp_to_epoch(ts_str):
+    """Parse timestamp strings of format '%Y-%m-%d %H:%M:%S' to epoch seconds.
+       Return None if parsing fails."""
+    try:
+        dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+        return time.mktime(dt.timetuple())
+    except Exception:
+        return None
+
+def safe_write_serial_port_obj(ser, data):
+    """Write bytes to serial.Serial object if available. Returns True on success."""
+    if ser is None:
+        return False
+    try:
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        ser.write(data)
+        return True
+    except Exception as e:
+        print(f"[SERIAL WRITE ERROR] {e}")
+        return False
+
+def safe_write_serial(port, data):
+    """Thread-safe write to a serial port if present in serial_ports map."""
+    with serial_ports_lock:
+        ser = serial_ports.get(port)
+    return safe_write_serial_port_obj(ser, data)
 
 # === SERIAL HANDLER THREAD ===
 #literally just starts listening to the arduinos and when it detects a change start a match
 
 def handle_serial(Serialport):
+    ser = None
     while True:    
         try:
             ser = serial.Serial(Serialport, BAUD_RATE) #opens the serial port
             print(f"[SERIAL] Serial connected at {Serialport}")
             print("[STATUS] Ready")
+            # --- ADDED: publish opened serial object for other threads to use (LED manager)
+            with serial_ports_lock:
+                serial_ports[Serialport] = ser
             break
         except Exception as e:
             print(f"[SERIAL] error {e} retrying in 5 seconds") #functionality to retry the serial port if the specified arduino isnt detected.
@@ -122,7 +169,7 @@ def handle_serial(Serialport):
                     getCurrentChargingRecords = ref.child('BatteryList/' + matched_tag + '/ChargingRecords').get()
 
                     if getCurrentChargingRecords is None: #Incase this is the first charge record for this battery/tag
-                      getCurrentChargingRecords = [] #Start with an empty array
+                      getCurrentChargingRecords = [] #create an empty array for charging records
                       getCurrentChargingRecords.append({'StartTime': timestamp(now),'ChargingSlot': slot,'ID' : 0}) #Append the first record with the current start time and slot
 
                     else: #Otherwise  append a new record with the current start time and slot
@@ -244,12 +291,159 @@ def listen_rfid():
             with lock:
                 pending_tags.append((tag_id, now))
                 print(f"[RFID] Tag Read: {tag_id} at {timestamp(now)}")
+            
+
+# === LED MANAGER THREAD (ADDED) ===
+def led_manager_loop():
+    """
+    Poll firebase every POLL_INTERVAL seconds, determine each slot's state, and send LED commands.
+    Heartbeat 'PING' sent every HEARTBEAT_INTERVAL seconds to keep LEDs alive.
+    """
+    last_heartbeat = 0.0
+
+    # Wait until COM_PORT1 serial is opened by handle_serial
+    # This avoids opening the same port twice and ensures we reuse the port in handle_serial.
+    while True:
+        with serial_ports_lock:
+            ser = serial_ports.get(COM_PORT1)
+        if ser:
+            break
+        print("[LED] Waiting for COM_PORT1 to be opened by handle_serial...")
+        time.sleep(0.5)
+
+    while True:
+        loop_start = time.time()
+
+        # Heartbeat if needed
+        if (time.time() - last_heartbeat) >= HEARTBEAT_INTERVAL:
+            ok = safe_write_serial(COM_PORT1, "PING\n")
+            if ok:
+                last_heartbeat = time.time()
+
+        # Read minTime from settings
+        try:
+            min_time_setting = ref.child('Settings/minTime').get()
+            if min_time_setting is None:
+                min_time_setting = 0
+            else:
+                min_time_setting = int(min_time_setting)
+        except Exception:
+            min_time_setting = 0
+
+        now = time.time()
+
+        # Copy slot_status under lock so we don't hold lock while hitting firebase
+        with lock:
+            local_slot_status = dict(slot_status)
+
+        slot_evaluations = {}
+        current_charging = ref.child('CurrentChargingList').get() or {}
+
+        # helper: find tag for slot via CurrentChargingList/BatteryList if not in local slot_status
+        def find_tag_for_slot_db(slot):
+            # check CurrentChargingList for tags whose BatteryList ChargingSlot matches
+            if isinstance(current_charging, dict):
+                for tag in current_charging.keys():
+                    try:
+                        bslot = ref.child(f'BatteryList/{tag}/ChargingSlot').get()
+                        if bslot is not None and int(bslot) == slot:
+                            return tag
+                    except Exception:
+                        continue
+            return None
+
+        for slot in range(7):
+            entry = {"state": "AVAILABLE", "tag": None, "elapsed": None}
+
+            ls = local_slot_status.get(slot)
+            if ls and ls.get("state") == "PRESENT" and ls.get("tag"):
+                tag = ls.get("tag")
+                entry["state"] = "PRESENT"
+                entry["tag"] = tag
+                cst = ref.child(f'BatteryList/{tag}/ChargingStartTime').get()
+                if not cst:
+                    cst = ref.child(f'CurrentChargingList/{tag}/ChargingStartTime').get()
+                epoch = parse_timestamp_to_epoch(cst) if cst else None
+                if epoch:
+                    entry["elapsed"] = now - epoch
+            else:
+                tag = find_tag_for_slot_db(slot)
+                if tag:
+                    entry["state"] = "PRESENT"
+                    entry["tag"] = tag
+                    cst = ref.child(f'BatteryList/{tag}/ChargingStartTime').get()
+                    if not cst:
+                        cst = ref.child(f'CurrentChargingList/{tag}/ChargingStartTime').get()
+                    epoch = parse_timestamp_to_epoch(cst) if cst else None
+                    if epoch:
+                        entry["elapsed"] = now - epoch
+                else:
+                    entry["state"] = "AVAILABLE"
+                    entry["tag"] = None
+                    entry["elapsed"] = None
+
+            slot_evaluations[slot] = entry
+
+        # Determine fully charged slots and pick-next
+        fully_charged_slots = []
+        for s, e in slot_evaluations.items():
+            if e["state"] == "PRESENT" and e["elapsed"] is not None and e["elapsed"] >= min_time_setting:
+                fully_charged_slots.append((s, e["elapsed"]))
+
+        pick_next_slot = None
+        if fully_charged_slots:
+            fully_charged_slots.sort(key=lambda x: x[1], reverse=True)
+            pick_next_slot = fully_charged_slots[0][0]
+
+        # Send LED commands
+        for slot in range(7):
+            ev = slot_evaluations[slot]
+            if ev["state"] == "AVAILABLE":
+                mode = "PULSE"
+                hue = HUE_ORANGE
+            elif ev["state"] == "PRESENT":
+                if ev["elapsed"] is not None and ev["elapsed"] >= min_time_setting:
+                    if slot == pick_next_slot:
+                        mode = "DEEPPULSE"
+                        hue = HUE_GREEN
+                    else:
+                        mode = "SOLID"
+                        hue = HUE_BLUE
+                else:
+                    mode = "SOLID"
+                    hue = HUE_RED
+            else:
+                mode = "PULSE"
+                hue = HUE_ORANGE
+
+            pos = POSITIONS[slot] if slot < len(POSITIONS) else 0
+            this_cmd_tuple = (mode, hue, pos)
+            last = last_sent_command.get(slot)
+            if last != this_cmd_tuple:
+                cmd_str = f"SEG {slot} POS {pos} COLOR {hue} MODE {mode}\n"
+                ok = safe_write_serial(COM_PORT1, cmd_str)
+                if ok:
+                    print(f"[LED] Sent: {cmd_str.strip()}")
+                    last_sent_command[slot] = this_cmd_tuple
+                else:
+                    print(f"[LED] Failed to send LED command for slot {slot} (serial not ready)")
+
+        # Sleep until next poll
+        elapsed_loop = time.time() - loop_start
+        to_sleep = POLL_INTERVAL - elapsed_loop
+        if to_sleep > 0:
+            time.sleep(to_sleep)
+
 
 # === MAIN ===
 
 if __name__ == "__main__":
     threading.Thread(target=handle_serial, args=(COM_PORT1,), daemon=True).start() #args is now the com port for each arduino, kept in hardwareIDS.json. This is so we can listen to both arduinos
-    threading.Thread(target=handle_serial, args=(COM_PORT2,), daemon=True).start() 
+    threading.Thread(target=handle_serial, args=(COM_PORT2,), daemon=True).start()
+
+    # Start the LED manager thread (reads DB and writes LED commands using the same COM_PORT1 serial object)
+    threading.Thread(target=led_manager_loop, daemon=True).start()
+
     listen_rfid()
 
     # Keep alive
