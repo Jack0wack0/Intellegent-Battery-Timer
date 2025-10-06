@@ -427,6 +427,7 @@ def led_manager_loop():
                     last_sent_command[slot] = this_cmd_tuple
                 else:
                     print(f"[LED] Failed to send LED command for slot {slot} (serial not ready)")
+                time.sleep(0.01)
 
         # Sleep until next poll
         elapsed_loop = time.time() - loop_start
