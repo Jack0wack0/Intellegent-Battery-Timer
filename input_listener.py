@@ -311,17 +311,18 @@ def led_manager_loop():
         time.sleep(0.5)
 
     def wait_for_ack(timeout=ACK_TIMEOUT):
-        """Wait for 'ACK' or 'OK' from Arduino with a timeout."""
         start = time.time()
         while time.time() - start < timeout:
             if ser.in_waiting:
                 try:
                     line = ser.readline().decode().strip()
-                    if line in ("ACK", "OK"):
+                    print(f"[DEBUG ACK] Received: '{line}'")
+                    if line == "ACK" or line == "OK":
                         return True
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[ACK ERROR] {e}")
             time.sleep(0.05)
+        print("[ACK] Timeout waiting for ACK")
         return False
 
     while True:
