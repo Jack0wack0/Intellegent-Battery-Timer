@@ -340,14 +340,43 @@ def led_manager_loop():
 
         def find_tag_for_slot_db(slot):
             if isinstance(current_charging, dict):
-                for tag in current_charging.keys():
-                    try:
-                        bslot = ref.child(f'BatteryList/{tag}/ChargingSlot').get()
-                        if bslot is not None and int(bslot) == slot:
-                            return tag
-                    except Exception:
+                # Read the current battery list from Firebase
+                batteries_ref = db.reference("BatteryList")
+                batteries = batteries_ref.get() or {}
+
+                for slot, battery_data in batteries.items():
+                    if not isinstance(battery_data, dict):
                         continue
-            return None
+
+                    is_charging = battery_data.get("IsCharging", False)
+                    hue = battery_data.get("Color", 0)
+                    pos = battery_data.get("Position", 0)
+                    mode = battery_data.get("Mode", "OFF")
+
+                    if is_charging:
+                        this_cmd = (pos, hue, mode)
+                        last = last_sent_command.get(slot)
+
+                        # Only send if something changed
+                        if this_cmd != last:
+                            cmd_str = f"SEG {slot} POS {pos} COLOR {hue} MODE {mode}\n"
+                            retries = 0
+                            while retries < MAX_RETRIES:
+                                if safe_write_serial(COM_PORT1, cmd_str):
+                                    print(f"[LED] Sent: {cmd_str.strip()} (attempt {retries+1})")
+                                    if wait_for_ack():
+                                        last_sent_command[slot] = this_cmd
+                                        break
+                                    else:
+                                        retries += 1
+                                        print(f"[LED] No ACK received for slot {slot}, retrying ({retries}/{MAX_RETRIES})...")
+                                        time.sleep(0.2)
+                                else:
+                                    print(f"[LED] Failed to send command for slot {slot}")
+                                    break
+                            if retries >= MAX_RETRIES:
+                                print(f"[LED] ERROR: Failed to confirm slot {slot} command after {MAX_RETRIES} attempts.")
+
 
         slot_evaluations = {}
         for slot in range(7):
