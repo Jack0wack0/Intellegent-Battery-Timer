@@ -13,4 +13,4 @@ ls /dev/serial/by-id/*
 copy down the IDs provided and create hardwareIDS.json in the same directory as input_listener.py (usually /pi/tagtracker/*)
 paste the IDs into hardwareIDS.json
 
-Arduino code must also be uploaded. PROVIDE ARDUINO CODE!
+Arduino code must also be uploaded. Arduino code is located in this repository: https://github.com/Jack0wack0/Intellegent-Battery-Timer-Arduino-Code
