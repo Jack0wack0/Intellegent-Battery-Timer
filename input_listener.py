@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
-# open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
 with open("hardwareIDS.json") as hardwareID:
     RemoteID = json.load(hardwareID)
 
@@ -96,7 +95,6 @@ def safe_write_serial(port, data):
 
 def handle_serial(Serialport):
     ser = None
-    ser = None
     while True:    
         try:
             ser = serial.Serial(Serialport, BAUD_RATE) #opens the serial port
@@ -106,28 +104,16 @@ def handle_serial(Serialport):
             #publish opened serial object for other threads to use (LED manager)
             with serial_ports_lock:
                 serial_ports[Serialport] = ser
-            time.sleep(1)
-            #publish opened serial object for other threads to use (LED manager)
-            with serial_ports_lock:
-                serial_ports[Serialport] = ser
             break
         except Exception as e:
-            print(f"[SERIAL] error {e} retrying in 5 seconds")
             print(f"[SERIAL] error {e} retrying in 5 seconds")
             time.sleep(5)
 
     #keeps resending commands until the arduino recieves it.
-    #keeps resending commands until the arduino recieves it.
     while True:
         try:
             raw_line = ser.readline().decode("utf-8").strip()
-            raw_line = ser.readline().decode("utf-8").strip()
         except Exception:
-            continue
-        
-        # --- ACK Handling ---
-        if raw_line == "ACK" or raw_line == "OK":
-            ack_received.set()
             continue
         
         # --- ACK Handling ---
@@ -156,17 +142,13 @@ def handle_serial(Serialport):
             continue
 
         now = time.time() #set now to our timestamp
-        now = time.time() #set now to our timestamp
 
         with lock:
             if slot not in slot_status:
                 slot_status[slot] = {"state": None, "last_change": 0, "tag": None} 
-                slot_status[slot] = {"state": None, "last_change": 0, "tag": None} 
 
             prev_tag = slot_status[slot]["tag"] #set previous tag
-            prev_tag = slot_status[slot]["tag"] #set previous tag
             slot_status[slot]["state"] = state
-            slot_status[slot]["last_change"] = now 
             slot_status[slot]["last_change"] = now 
 
             if state == "PRESENT":
@@ -185,14 +167,12 @@ def handle_serial(Serialport):
                     slot_status[slot]["tag"] = matched_tag
                     
                     #if pending_tags changes between finding and removing it will raise value error.
-                    #if pending_tags changes between finding and removing it will raise value error.
                     try:
                         pending_tags.remove((matched_tag, t_time))
                     except ValueError:
                         pass
                     
                     #Add the newly scanned battery/tag to the 'CurrentChargingList' to show as actively charging
-                    #this could possibly be removed as i can just look at IsCharging: True. 
                     #this could possibly be removed as i can just look at IsCharging: True. 
                     ref.child('CurrentChargingList/' + matched_tag).update({
                         'ID': matched_tag,
@@ -204,11 +184,9 @@ def handle_serial(Serialport):
 
                     if getCurrentChargingRecords is None: #Incase this is the first charge record for this battery/tag
                       getCurrentChargingRecords = [] #create an empty array for charging records
-                      getCurrentChargingRecords = [] #create an empty array for charging records
                       getCurrentChargingRecords.append({'StartTime': timestamp(now),'ChargingSlot': slot,'ID' : 0}) #Append the first record with the current start time and slot
                       print(f"[FIREBASE] First record for {matched_tag} created")
 
-                    else: #Otherwise append a new record with the current start time and slot
                     else: #Otherwise append a new record with the current start time and slot
                       getCurrentChargingRecords.append({'StartTime': timestamp(now),'ChargingSlot': slot,'ID': len(getCurrentChargingRecords)})
 
@@ -320,8 +298,6 @@ def handle_serial(Serialport):
 
 #ALEX DO NOT USE .SET ANYMORE ONLY USE .UPDATE YOU PMO - Jackson 8/7/2025
 
-#ALEX DO NOT USE .SET ANYMORE ONLY USE .UPDATE YOU PMO - Jackson 8/7/2025
-
 
 # === RFID LISTENER THREAD ===
 # essentially all this does is look for a 10 digit string of numbers coming in from the keyboard. if it detects it, add it to pending_tags.
@@ -334,7 +310,6 @@ def listen_rfid():
             tag_id = tag_buffer[-10:] 
             now = time.time()
             with lock:
-                pending_tags.append((tag_id, now)) #timestamp the tag scan and send it off to be matched with a slot <3
                 pending_tags.append((tag_id, now)) #timestamp the tag scan and send it off to be matched with a slot <3
                 print(f"[RFID] Tag Read: {tag_id} at {timestamp(now)}")
             
@@ -465,14 +440,8 @@ if __name__ == "__main__":
     # Start the LED manager thread (reads DB and writes LED commands using the same COM_PORT1 serial object)
     threading.Thread(target=led_manager_loop, daemon=True).start()
 
-    threading.Thread(target=handle_serial, args=(COM_PORT2,), daemon=True).start()
-
-    # Start the LED manager thread (reads DB and writes LED commands using the same COM_PORT1 serial object)
-    threading.Thread(target=led_manager_loop, daemon=True).start()
-
     listen_rfid()
 
     # Keep alive
     while True:
         time.sleep(1)
-
