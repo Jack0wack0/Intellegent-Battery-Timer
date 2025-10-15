@@ -2,6 +2,7 @@
 set -e
 
 PROJECT_DIR=/home/admin/tagtracker
+echo "Please have your firebase credentials handy. You will be prompted to enter them."
 
 echo "[*] Updating system..."
 sudo apt-get update -y
