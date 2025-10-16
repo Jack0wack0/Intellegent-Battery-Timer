@@ -9,20 +9,50 @@ from firebase_admin import credentials
 from firebase_admin import db
 from dotenv import load_dotenv
 import logging
+from logging.handlers import RotatingFileHandler
+import sys
+import re
 
 # === CONFIGURATION ===
 load_dotenv()
 
-# Logging initialization
-logging.basicConfig(
-    filename='log.txt', #where the log file is saved
-    level=logging.DEBUG, #level that the logs are at
-    format='%(asctime)s [%(levelname)s] %(message)s' #timestamp, level, message format
-)
+# === LOGGING CONFIGURATION ===
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
 
-# Redirect print statements to logging. if you want console output just comment this line out.
-print = lambda *args, **kwargs: logging.info(" ".join(map(str, args)))
+# Rotating file handler (keeps last 5 logs, each up to 5MB)
+file_handler = RotatingFileHandler("log.txt", maxBytes=5*1024*1024, backupCount=5, encoding="utf-8")
+file_formatter = logging.Formatter("%(asctime)s [%(name)s] [%(levelname)s] %(message)s")
+file_handler.setFormatter(file_formatter)
+file_handler.setLevel(logging.DEBUG)
 
+# Color-coded console handler
+class ColorFormatter(logging.Formatter):
+    COLORS = {
+        "FIREBASE": "\033[96m",  # cyan
+        "LED": "\033[93m",       # yellow
+        "RFID": "\033[92m",      # green
+        "SERIAL": "\033[95m",    # magenta
+        "TIME": "\033[94m",      # blue
+        "MATCH PROCESS": "\033[91m",  # red
+        "GENERAL": "\033[97m",   # white
+    }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        color = self.COLORS.get(record.name, "\033[97m")
+        formatted = super().format(record)
+        return f"{color}{formatted}{self.RESET}"
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_formatter = ColorFormatter("%(asctime)s [%(name)s] [%(levelname)s] %(message)s")
+console_handler.setFormatter(console_formatter)
+
+root_logger.addHandler(file_handler)
+root_logger.addHandler(console_handler)
+
+# Subsystem loggers
 firebase_log = logging.getLogger("FIREBASE")
 led_log = logging.getLogger("LED")
 rfid_log = logging.getLogger("RFID")
@@ -30,6 +60,31 @@ serial_log = logging.getLogger("SERIAL")
 general_log = logging.getLogger("GENERAL")
 time_log = logging.getLogger("TIME")
 match_log = logging.getLogger("MATCH PROCESS")
+
+# === SMART PRINT REDIRECTOR ===
+loggers = {
+    "FIREBASE": firebase_log,
+    "LED": led_log,
+    "RFID": rfid_log,
+    "SERIAL": serial_log,
+    "TIME": time_log,
+    "MATCH": match_log,
+    "GENERAL": general_log,
+}
+
+def smart_print(*args, **kwargs):
+    msg = " ".join(map(str, args))
+    match = re.match(r"\[(\w+)\]\s*(.*)", msg)
+    if match:
+        subsystem, rest = match.groups()
+        logger = loggers.get(subsystem.upper(), general_log)
+        logger.info(rest)
+    else:
+        general_log.info(msg)
+
+# Override built-in print
+print = smart_print
+
 
 # open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
 with open("hardwareIDS.json") as hardwareID:
@@ -48,11 +103,12 @@ firebase_log.info(f"Firebase initialized.")
 if not FIREBASE_DB_BASE_URL or not FIREBASE_CREDS_FILE:
     firebase_log.critical("Missing Firebase configuration in environment variables!")
     general_log.critical("Missing credentials. Program will not start.")
+    sys.exit(1)
 
 
 # Initialize the app with a service account, granting admin privileges
 cred = credentials.Certificate(FIREBASE_CREDS_FILE)
-firebase_log.info("[FIREBASE] Creds loaded")
+firebase_log.info("Creds loaded")
 firebase_admin.initialize_app(cred, {
     'databaseURL': FIREBASE_DB_BASE_URL
 })
@@ -251,10 +307,10 @@ def handle_serial(Serialport):
                 if prev_tag:
                     match_log.info(f"Tag {prev_tag} removed from slot {slot} at {timestamp(now)}")
                     slot_status[slot]["tag"] = None
-
                     # Remove the newly removed battery/tag from the 'CurrentChargingList' to show as no longer actively charging
                     ref.child('CurrentChargingList/' + prev_tag).delete() #again this could be deleted.
                     firebase_log.info("Removed from CurrentChargingList")
+
                     #Get the current (Now removed) charging slot for this battery/tag
                     chargingSlot = ref.child(f'BatteryList/{prev_tag}/ChargingSlot').get()
 
@@ -263,12 +319,9 @@ def handle_serial(Serialport):
 
                     #Count the number of existing records to determine the ID of the most recent record
                     count = len(getCurrentChargingRecords) if getCurrentChargingRecords else 0 #Set to 0 if this is the first record for firebase 'array'
-
                     startTime = ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{count-1}/StartTime').get() #Pull the start time of the most recent record to determine duration
                     endTime = timestamp(now) #Set the end time as now since it's just been removed
                     endTimeStamp = timestamp(now) #Set the end time as now since it's just been removed
-
-
                     endTime = datetime.strptime(endTime, "%Y-%m-%d %H:%M:%S") #Convert to datetime object
                     startTime = datetime.strptime(startTime, "%Y-%m-%d %H:%M:%S") #Convert to datetime object
                     duration = endTime - startTime #Determine the duration between start and end time 
@@ -276,7 +329,6 @@ def handle_serial(Serialport):
 
                     #Update the most recent record with the end time and duration, count-1 is used to get the most recent record since arrays are 0 indexed in Firebase
                     ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{count-1}').update({'EndTime': endTimeStamp, 'Duration': str(duration.total_seconds())[:-2]}) #Duration is saved in SECONDS with removing the default '.0' left with the total_seconds method I.E '30.0' seconds is saved as '30'
-
 
                     #Remove the last record from the array to prevent it from being counted twice
                     #This last record is the one just updated, however is currently stored locally without duration/endtime
@@ -292,10 +344,8 @@ def handle_serial(Serialport):
                     overallDuration = 0
                     avgDuration = 0
                     totalCycles = 0 #Get the total number of cycles for this battery/tag
-
                     minTimeSetting = ref.child(f'Settings/minTime').get() #Get the minimum time settings for the battery.
                     firebase_log.debug(f"Pulled Minimum Time Setting {minTimeSetting} seconds")
-
                     for record in getCurrentChargingRecords: #Loop through all records for this battery/tag
                         
                         if float(record['Duration']) >= int(minTimeSetting): #Only count records that are above the minimum time setting
@@ -375,6 +425,7 @@ def led_manager_loop():
         if (time.time() - last_heartbeat) >= HEARTBEAT_INTERVAL:
             safe_write_serial(COM_PORT1, "PING\n")
             last_heartbeat = time.time()
+            led_log.debug("PING sent") 
 
         try:
             min_time_setting = int(ref.child('Settings/minTime').get() or 0) #pull min time setting for rendering the LEDS
