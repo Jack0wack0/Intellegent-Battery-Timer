@@ -8,9 +8,28 @@ import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import db
 from dotenv import load_dotenv
+import logging
 
 # === CONFIGURATION ===
 load_dotenv()
+
+# Logging initialization
+logging.basicConfig(
+    filename='log.txt', #where the log file is saved
+    level=logging.DEBUG, #level that the logs are at
+    format='%(asctime)s [%(levelname)s] %(message)s' #timestamp, level, message format
+)
+
+# Redirect print statements to logging. if you want console output just comment this line out.
+print = lambda *args, **kwargs: logging.info(" ".join(map(str, args)))
+
+firebase_log = logging.getLogger("FIREBASE")
+led_log = logging.getLogger("LED")
+rfid_log = logging.getLogger("RFID")
+serial_log = logging.getLogger("SERIAL")
+general_log = logging.getLogger("GENERAL")
+time_log = logging.getLogger("TIME")
+match_log = logging.getLogger("MATCH PROCESS")
 
 # open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
 with open("hardwareIDS.json") as hardwareID:
@@ -23,9 +42,17 @@ MATCH_WINDOW_SECONDS = 1.0 #change to adjust the window for matching slots and R
 FIREBASE_DB_BASE_URL = getenv('FIREBASE_DB_BASE_URL')
 FIREBASE_CREDS_FILE = getenv('FIREBASE_CREDS_FILE')
 
+general_log.info(f"Loaded hardware IDs: {RemoteID}")
+firebase_log.info(f"Firebase initialized.")
+
+if not FIREBASE_DB_BASE_URL or not FIREBASE_CREDS_FILE:
+    firebase_log.critical("Missing Firebase configuration in environment variables!")
+    general_log.critical("Missing credentials. Program will not start.")
+
+
 # Initialize the app with a service account, granting admin privileges
 cred = credentials.Certificate(FIREBASE_CREDS_FILE)
-print("[FIREBASE] Creds loaded")
+firebase_log.info("[FIREBASE] Creds loaded")
 firebase_admin.initialize_app(cred, {
     'databaseURL': FIREBASE_DB_BASE_URL
 })
@@ -55,19 +82,23 @@ last_sent_command = {}   # slot -> (mode, hue, pos) to reduce redundant writes
 MAX_RETRIES = 5 # if you have special code on your arduino you may need to increase the amount of retries.
 ACK_TIMEOUT = 2.0  # seconds
 ack_received = threading.Event()
-print("CONSTANTS INITIALIZED")
+general_log.debug("CONSTANTS INITIALIZED")
 
 # === UTILITY ===
 def timestamp(ts=None):
+    time_log.debug("Timestamp format set")
     return datetime.fromtimestamp(ts or time.time()).strftime("%Y-%m-%d %H:%M:%S") #define our timestamp format
+    
 
 def parse_timestamp_to_epoch(ts_str):
     """Parse timestamp strings of format '%Y-%m-%d %H:%M:%S' to epoch seconds.
        Return None if parsing fails."""
     try:
         dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+        time_log.debug(f"Parsed timestamp {ts_str} to epoch. Parsing successful.")
         return time.mktime(dt.timetuple())
     except Exception:
+        time_log.error(f"Failed to parse timestamp")
         return None
 
 def safe_write_serial_port_obj(ser, data):
@@ -78,16 +109,17 @@ def safe_write_serial_port_obj(ser, data):
         if isinstance(data, str):
             data = data.encode('utf-8')
         ser.write(data)
-        print("[SERIAL] serial opened")
+        serial_log.debug("serial opened")
         return True
     except Exception as e:
-        print(f"[SERIAL WRITE ERROR] {e}")
+        serial_log.critical(f"SERIAL WRITE ERROR {e}")
         return False
-#
+
 def safe_write_serial(port, data):
     """Thread-safe write to a serial port if present in serial_ports map."""
     with serial_ports_lock:
         ser = serial_ports.get(port)
+    serial_log.debug("safe write serial set")
     return safe_write_serial_port_obj(ser, data)
 
 # === SERIAL HANDLER THREAD ===
@@ -98,21 +130,23 @@ def handle_serial(Serialport):
     while True:    
         try:
             ser = serial.Serial(Serialport, BAUD_RATE) #opens the serial port
-            print(f"[SERIAL] Serial connected at {Serialport}")
-            print("[STATUS] Ready")
+            serial_log.debug(f"Serial connected at {Serialport}")
+            general_log.info("Ready")
             time.sleep(1)
             #publish opened serial object for other threads to use (LED manager)
             with serial_ports_lock:
                 serial_ports[Serialport] = ser
+                serial_log.debug(f"Published serial port {Serialport} for shared use")
             break
         except Exception as e:
-            print(f"[SERIAL] error {e} retrying in 5 seconds")
+            serial_log.critical(f"error {e} retrying in 5 seconds")
             time.sleep(5)
 
     #keeps resending commands until the arduino recieves it.
     while True:
         try:
             raw_line = ser.readline().decode("utf-8").strip()
+            serial_log.warning(f"Serial read failed on {Serialport}, retrying...")
         except Exception:
             continue
         
@@ -157,13 +191,13 @@ def handle_serial(Serialport):
                 matched_tag = None
                 
                 for tag, t_time in pending_tags:
-                    print(f"[MATCH] Comparing tag time {timestamp(t_time)} to slot time {timestamp(now)}")
+                    match_log.debug(f"Comparing tag time {timestamp(t_time)} to slot time {timestamp(now)}")
                     if abs(now - t_time) <= MATCH_WINDOW_SECONDS:
                         matched_tag = tag 
-                        print(f"[MATCH] Tag Pulled: {matched_tag}")
+                        match_log.info(f"Tag Pulled: {matched_tag}")
                         break
                 if matched_tag:
-                    print(f"[MATCH] Tag {matched_tag} matched to slot {slot} at {timestamp(now)}")
+                    match_log.info(f"Tag {matched_tag} matched to slot {slot} at {timestamp(now)}")
                     slot_status[slot]["tag"] = matched_tag
                     
                     #if pending_tags changes between finding and removing it will raise value error.
@@ -178,14 +212,14 @@ def handle_serial(Serialport):
                         'ID': matched_tag,
                         'ChargingStartTime': timestamp(now), #Use this timestamp to later determine how long it's been charging for
                     })
-                    print("[FIREBASE] Added to CurrentChargingList")
+                    firebase_log.debug("Added to CurrentChargingList")
                     #Pull all records of charging for this battery/tag
                     getCurrentChargingRecords = ref.child('BatteryList/' + matched_tag + '/ChargingRecords').get()
 
                     if getCurrentChargingRecords is None: #Incase this is the first charge record for this battery/tag
                       getCurrentChargingRecords = [] #create an empty array for charging records
                       getCurrentChargingRecords.append({'StartTime': timestamp(now),'ChargingSlot': slot,'ID' : 0}) #Append the first record with the current start time and slot
-                      print(f"[FIREBASE] First record for {matched_tag} created")
+                      firebase_log.info(f"First record for {matched_tag} created")
 
                     else: #Otherwise append a new record with the current start time and slot
                       getCurrentChargingRecords.append({'StartTime': timestamp(now),'ChargingSlot': slot,'ID': len(getCurrentChargingRecords)})
@@ -203,10 +237,10 @@ def handle_serial(Serialport):
                     
                     # Check if battery has a name in BatteryNames
                     name_ref = ref.child(f'BatteryNames/{matched_tag}')
-                    print(f"[FIREBASE] Checking for name for {matched_tag}")
+                    firebase_log.debug(f"Checking for name for {matched_tag}")
                     if not name_ref.get():
                         # Trigger the frontend to prompt naming
-                        print(f"[FIREBASE] No name found for {matched_tag}, prompting for name.")
+                        firebase_log.debug(f"No name found for {matched_tag}, prompting for name.")
                         ref.child(f'NameRequests/{matched_tag}').set({
                             'Slot': slot,
                             'Timestamp': timestamp(now),
@@ -215,12 +249,12 @@ def handle_serial(Serialport):
 
             elif state == "REMOVED":
                 if prev_tag:
-                    print(f"[REMOVED] Tag {prev_tag} removed from slot {slot} at {timestamp(now)}")
+                    match_log.info(f"Tag {prev_tag} removed from slot {slot} at {timestamp(now)}")
                     slot_status[slot]["tag"] = None
 
                     # Remove the newly removed battery/tag from the 'CurrentChargingList' to show as no longer actively charging
                     ref.child('CurrentChargingList/' + prev_tag).delete() #again this could be deleted.
-                    print("[FIREBASE] Removed from CurrentChargingList")
+                    firebase_log.info("Removed from CurrentChargingList")
                     #Get the current (Now removed) charging slot for this battery/tag
                     chargingSlot = ref.child(f'BatteryList/{prev_tag}/ChargingSlot').get()
 
@@ -238,7 +272,7 @@ def handle_serial(Serialport):
                     endTime = datetime.strptime(endTime, "%Y-%m-%d %H:%M:%S") #Convert to datetime object
                     startTime = datetime.strptime(startTime, "%Y-%m-%d %H:%M:%S") #Convert to datetime object
                     duration = endTime - startTime #Determine the duration between start and end time 
-                    print(f"[FIREBASE] Duration for {prev_tag} was {duration}")
+                    firebase_log.debug(f"Duration for {prev_tag} was {duration}")
 
                     #Update the most recent record with the end time and duration, count-1 is used to get the most recent record since arrays are 0 indexed in Firebase
                     ref.child(f'BatteryList/{prev_tag}/ChargingRecords/{count-1}').update({'EndTime': endTimeStamp, 'Duration': str(duration.total_seconds())[:-2]}) #Duration is saved in SECONDS with removing the default '.0' left with the total_seconds method I.E '30.0' seconds is saved as '30'
@@ -251,7 +285,7 @@ def handle_serial(Serialport):
 
                     #Due to not waiting on confirmation from firebase that the above update has been made, manually append the end time and duration to the local copy of the records array
                     getCurrentChargingRecords.append({'StartTime': startTime,'EndTime': endTime,'Duration': str(duration.total_seconds())[:-2]})
-                    print(f"[FIREBASE] Updated record for {prev_tag} with end time and duration")
+                    firebase_log.info(f"Updated record for {prev_tag} with end time and duration")
 
                     #Calculate the overall charge time and average charge time
                     #Note, everything is in SECONDS
@@ -260,7 +294,7 @@ def handle_serial(Serialport):
                     totalCycles = 0 #Get the total number of cycles for this battery/tag
 
                     minTimeSetting = ref.child(f'Settings/minTime').get() #Get the minimum time settings for the battery.
-                    print(f"[FIREBASE] Pulled Minimum Time Setting {minTimeSetting} seconds")
+                    firebase_log.debug(f"Pulled Minimum Time Setting {minTimeSetting} seconds")
 
                     for record in getCurrentChargingRecords: #Loop through all records for this battery/tag
                         
@@ -305,32 +339,34 @@ def handle_serial(Serialport):
 def listen_rfid():
     while True:
         tag_buffer = input().strip() #read the input and add it to a buffer variable
-        print(f"[RFID] Input Received, added to buffer: {tag_buffer}")
+        rfid_log.info(f"Input Received, added to buffer: {tag_buffer}")
         if tag_buffer.isdigit() and len(tag_buffer) >= 10: #if its a valid tag scan, not just someone typing
             tag_id = tag_buffer[-10:] 
             now = time.time()
             with lock:
                 pending_tags.append((tag_id, now)) #timestamp the tag scan and send it off to be matched with a slot <3
-                print(f"[RFID] Tag Read: {tag_id} at {timestamp(now)}")
-            
+                rfid_log.info(f"Tag Read: {tag_id} at {timestamp(now)}")
+        else:
+            rfid_log.warning(f"Ignored invalid input: {tag_buffer}") #log it
+            tag_buffer = "" #clear the buffer
 
-# === LED MANAGER THREAD (ADDED) ===
+# === LED MANAGER THREAD ===
 
 def led_manager_loop():
     last_heartbeat = 0.0 #restart heartbeat
-    print("[HEARTBEAT] Heartbeat reset")
+    led_log.debug("Heartbeat reset")
 
     while True:
         with serial_ports_lock:
             ser = serial_ports.get(COM_PORT1) #we have to share the com port so we are just waiting for the parent function (handle_serial) to open the serial interface
         if ser:
             break
-        print("[LED] Waiting for COM_PORT1 to be opened by handle_serial...")
+        led_log.debug("Waiting for COM_PORT1 to be opened by handle_serial...")
         time.sleep(0.5) #dont spam
 
     def wait_for_ack(timeout=ACK_TIMEOUT):
         ack_received.clear()
-        print("[LED] Waiting for ACK...")
+        led_log.debug("Waiting for ACK...")
         return ack_received.wait(timeout=timeout)
 
     while True:
@@ -360,7 +396,7 @@ def led_manager_loop():
                 continue
             if data.get("IsCharging") and data.get("ChargingSlot") is not None: #if its currently charging
                 slot_to_battery[data["ChargingSlot"]] = (tag, data)
-                print(f"[LED] Battery {tag} in slot {data['ChargingSlot']} is charging")
+                led_log.info(f"Battery {tag} in slot {data['ChargingSlot']} is charging")
 
         # Iterate through all slots
         slot_evaluations = {}
@@ -382,7 +418,7 @@ def led_manager_loop():
             if e["state"] == "PRESENT" and e["elapsed"] and e["elapsed"] >= min_time_setting
         ]
         pick_next_slot = max(fully_charged, key=lambda x: x[1])[0] if fully_charged else None #i think this is bound to be changed. we should be listening to the database to find what the "next pick" is
-        print(f"[LED] Next slot to pick: {pick_next_slot}")
+        led_log.info(f"Next slot to pick: {pick_next_slot}")
         #TODO: Change this to listen to the database and not compute the best available itself.
 
         for slot in range(7):
@@ -409,19 +445,20 @@ def led_manager_loop():
                 retries = 0
                 while retries < MAX_RETRIES: #retry logic
                     if safe_write_serial(COM_PORT1, cmd_str):
-                        print(f"[LED] Sent: {cmd_str.strip()} (attempt {retries+1})")
+                        led_log.info(f"Sent: {cmd_str.strip()} (attempt {retries+1})")
                         if wait_for_ack():
                             last_sent_command[slot] = this_cmd
                             break
                         else:
                             retries += 1
-                            print(f"[LED] No ACK received for slot {slot}, retrying ({retries}/{MAX_RETRIES})...")
+                            led_log.warning(f"No ACK received for slot {slot}, retrying ({retries}/{MAX_RETRIES})...")
                             time.sleep(0.2)
                     else:
-                        print(f"[LED] Failed to send command for slot {slot}")
+                        led_log.error(f"Failed to send command for slot {slot}")
                         break
                 if retries >= MAX_RETRIES:
-                    print(f"[LED] ERROR: Failed to confirm slot {slot} command after {MAX_RETRIES} attempts.")
+                    led_log.critical(f"Failed to confirm slot {slot} command after {MAX_RETRIES} attempts. Critical error, LEDs may be out of sync.")
+                    led_log.warning("LEDS OUT OF SYNC")
 
             time.sleep(0.1)
 
