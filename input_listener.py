@@ -85,6 +85,7 @@ def smart_print(*args, **kwargs):
 # Override built-in print
 print = smart_print
 
+general_log.info("Logging initialized. Program has just been started. ================ LOG START ================")
 
 # open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
 with open("hardwareIDS.json") as hardwareID:
@@ -98,11 +99,12 @@ FIREBASE_DB_BASE_URL = getenv('FIREBASE_DB_BASE_URL')
 FIREBASE_CREDS_FILE = getenv('FIREBASE_CREDS_FILE')
 
 general_log.info(f"Loaded hardware IDs: {RemoteID}")
-firebase_log.info(f"Firebase initialized.")
+firebase_log.info(f"Firebase initializing.")
 
 if not FIREBASE_DB_BASE_URL or not FIREBASE_CREDS_FILE:
     firebase_log.critical("Missing Firebase configuration in environment variables!")
     general_log.critical("Missing credentials. Program will not start.")
+    general_log.info("program exited with error")
     sys.exit(1)
 
 
