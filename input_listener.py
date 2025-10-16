@@ -86,6 +86,7 @@ def smart_print(*args, **kwargs):
 print = smart_print
 
 general_log.info("Logging initialized. Program has just been started. ================ LOG START ================")
+general_log.info("===============================================================================================")
 
 # open the json and load the serial port IDS of the arduinos. change hardwareIDS.json to change your hardware ids of your arduinos.
 with open("hardwareIDS.json") as hardwareID:
