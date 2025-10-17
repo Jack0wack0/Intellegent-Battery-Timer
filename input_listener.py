@@ -545,6 +545,30 @@ def pickNextSlot(slot_evaluations, min_time_setting):
 
     return pick_next_slot
 
+def heartbeat_loop():
+    """Periodically check serial connections and update Firebase /status."""
+    STATUS_INTERVAL = 10.0  # seconds
+    firebase_log.info("Heartbeat thread started.")
+
+    while True:
+        with serial_ports_lock:
+            ports_snapshot = dict(serial_ports)
+
+        status_data = {
+            "COM_PORT1": "connected" if COM_PORT1 in ports_snapshot else "disconnected",
+            "COM_PORT2": "connected" if COM_PORT2 in ports_snapshot else "disconnected",
+            "CPU_Temp": round(float(open("/sys/class/thermal/thermal_zone0/temp").read()) / 1000, 1),
+            "LastUpdated": timestamp()
+        }
+
+        try:
+            ref.child("status").update(status_data)
+            firebase_log.info(f"Heartbeat update: {status_data}")
+        except Exception as e:
+            firebase_log.error(f"Failed to update Firebase status: {e}")
+
+        time.sleep(STATUS_INTERVAL)
+
 
 # === MAIN ===
 
@@ -554,6 +578,7 @@ if __name__ == "__main__":
 
     # Start the LED manager thread (reads DB and writes LED commands using the same COM_PORT1 serial object)
     threading.Thread(target=led_manager_loop, daemon=True).start()
+    threading.Thread(target=heartbeat_loop, daemon=True).start()
 
     listen_rfid()
 
