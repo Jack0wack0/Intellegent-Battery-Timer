@@ -34,6 +34,11 @@ ref.child('BatteryList/' + prevtag).update({
                         'LastChargingSlot': None, #Remove the LastChargingSlot as it's currently charging
 })
 
+ref.child('CurrentChargingList/' + prevtag).update({
+                        'ID': prevtag,
+                        'ChargingStartTime': timestamp(now), #Use this timestamp to later determine how long it's been charging for
+                    })
+
 #id_test = ref.child('BatteryList/1').get()
 
 #print('Data from Firebase: ' + str(id_test))
