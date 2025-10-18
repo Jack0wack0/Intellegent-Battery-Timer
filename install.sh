@@ -2,7 +2,7 @@
 set -e
 
 CURRENT_USER=$(whoami)
-PROJECT_DIR=/home/$CURRENT_USER/tagtracker
+PROJECT_DIR=/home/$CURRENT_USER/Intellegent-Battery-Timer
 
 echo "Please have your firebase credentials handy. You will be prompted to enter them."
 
