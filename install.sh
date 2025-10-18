@@ -47,12 +47,14 @@ HARDWARE_FILE="$PROJECT_DIR/hardwareIDS.json"
 if [ ! -f "$HARDWARE_FILE" ]; then
   echo
   echo "Please plug in BOTH Arduinos, then type 'yes' and press Enter to continue."
-  
-  read -r CONTINUE? :
+
+  read -r CONTINUE
   if [ "$CONTINUE" != "yes" ]; then
     echo "Aborting hardware ID detection."
     echo "You must create the ID file yourself."
+    exit 1
   fi
+
 
   echo "[*] Scanning for connected serial devices..."
   SERIAL_PATHS=($(ls /dev/serial/by-id/* 2>/dev/null || true))
