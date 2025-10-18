@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
-PROJECT_DIR=/home/admin/tagtracker
+CURRENT_USER=$(whoami)
+PROJECT_DIR=/home/$CURRENT_USER/tagtracker
+
 echo "Please have your firebase credentials handy. You will be prompted to enter them."
 
 echo "[*] Updating system..."
@@ -39,6 +41,58 @@ else
   echo "[*] Skipping Firebase setup — $PROJECT_DIR/.env already exists."
 fi
 
+# Detect connected Arduino serial devices
+HARDWARE_FILE="$PROJECT_DIR/hardwareIDS.json"
+
+if [ ! -f "$HARDWARE_FILE" ]; then
+  echo
+  echo "Please plug in BOTH Arduinos, then type 'yes' and press Enter to continue."
+  
+  read -r CONTINUE? :
+  if [ "$CONTINUE" != "yes" ]; then
+    echo "Aborting hardware ID detection."
+    echo "You must create the ID file yourself."
+  fi
+
+  echo "[*] Scanning for connected serial devices..."
+  SERIAL_PATHS=($(ls /dev/serial/by-id/* 2>/dev/null || true))
+
+  if [ ${#SERIAL_PATHS[@]} -lt 2 ]; then
+    echo "[!] Less than two serial devices detected."
+    echo "Detected devices:"
+    printf '%s\n' "${SERIAL_PATHS[@]}"
+    echo "Please connect both Arduinos and rerun the installer."
+    exit 1
+  fi
+
+  echo "[*] Found serial devices:"
+  printf ' - %s\n' "${SERIAL_PATHS[@]}"
+
+  echo
+  echo "[*] Assign which device is which:"
+  select PORT1 in "${SERIAL_PATHS[@]}"; do
+    [ -n "$PORT1" ] && break
+  done
+  echo "COM_PORT1 set to $PORT1"
+
+  select PORT2 in "${SERIAL_PATHS[@]}"; do
+    [ -n "$PORT2" ] && break
+  done
+  echo "COM_PORT2 set to $PORT2"
+
+  cat <<EOF > "$HARDWARE_FILE"
+{
+  "COM_PORT1": "$PORT1",
+  "COM_PORT2": "$PORT2"
+}
+EOF
+
+  echo "[*] Saved hardware IDs to $HARDWARE_FILE"
+else
+  echo "[*] Skipping hardware ID setup — $HARDWARE_FILE already exists."
+fi
+
+
 # Setup systemd service
 SERVICE_FILE=/etc/systemd/system/tagtracker.service
 if [ ! -f "$SERVICE_FILE" ]; then
@@ -51,9 +105,9 @@ After=network.target
 [Service]
 ExecStart=/usr/bin/python3 $PROJECT_DIR/input_listener.py
 Restart=always
-User=admin
+User=$CURRENT_USER
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/admin/.Xauthority
+Environment=XAUTHORITY=/home/$CURRENT_USER/.Xauthority
 WorkingDirectory=$PROJECT_DIR
 
 [Install]
@@ -76,9 +130,9 @@ After=graphical.target
 [Service]
 ExecStart=chromium-browser --noerrdialogs --disable-infobars --kiosk https://$BOOTWEBSITE
 Restart=always
-User=admin
+User=$CURRENT_USER
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/admin/.Xauthority
+Environment=XAUTHORITY=/home/$CURRENT_USER/.Xauthority
 
 [Install]
 WantedBy=graphical.target
@@ -95,4 +149,4 @@ sudo systemctl restart tagtracker.service
 sudo systemctl restart browser.service
 
 echo "[*] Installation complete! Reboot to start the program."
-echo "=====> YOU MUST CREATE hardwareIDS.json IN $PROJECT_DIR THAT CONTAINS THE PATH FOR YOUR ARDUINOS FOR THE PROGRAM TO WORK!!! <====="
+

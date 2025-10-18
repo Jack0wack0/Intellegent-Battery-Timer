@@ -3,3 +3,4 @@ battery-tracking-d38fc-firebase-adminsdk-fbsvc-47e87dc999.json
 __pycache__
 hardwareIDS.json
 log.txt
+firebaseDBTest.py

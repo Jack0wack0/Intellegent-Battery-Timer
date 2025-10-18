@@ -305,6 +305,7 @@ def handle_serial(Serialport):
                             'Timestamp': timestamp(now),
                             'ID': matched_tag
                         })
+                    firebase_log.info(f"Name Exists for ID:{matched_tag}")
 
             elif state == "REMOVED":
                 if prev_tag:
@@ -466,14 +467,13 @@ def led_manager_loop():
                     entry["elapsed"] = time.time() - epoch
             slot_evaluations[slot] = entry
 
-        # Determine which slot is next to remove (longest elapsed)
-        fully_charged = [
-            (s, e["elapsed"]) for s, e in slot_evaluations.items()
-            if e["state"] == "PRESENT" and e["elapsed"] and e["elapsed"] >= min_time_setting
-        ]
-        pick_next_slot = max(fully_charged, key=lambda x: x[1])[0] if fully_charged else None #i think this is bound to be changed. we should be listening to the database to find what the "next pick" is
-        led_log.info(f"Next slot to pick: {pick_next_slot}")
-        #TODO: Change this to listen to the database and not compute the best available itself.
+        
+        pickNextSlot(slot_evaluations, min_time_setting)
+        nextup = pickNextSlot(slot_evaluations, min_time_setting)
+        led_log.info(f"Next slot to pick: {nextup}")
+
+        
+        
 
         for slot in range(7):
             ev = slot_evaluations[slot]
@@ -481,7 +481,7 @@ def led_manager_loop():
                 mode, hue = "PULSE", HUE_ORANGE #slot is available
             elif ev["state"] == "PRESENT":
                 if ev["elapsed"] and ev["elapsed"] >= min_time_setting:
-                    if slot == pick_next_slot:
+                    if slot == nextup:
                         mode, hue = "DEEPPULSE", HUE_GREEN #pick this next
                     else:
                         mode, hue = "SOLID", HUE_BLUE #charged, but not the best available
@@ -520,6 +520,54 @@ def led_manager_loop():
         sleep_time = max(0, POLL_INTERVAL - elapsed)
         time.sleep(sleep_time)
 
+def pickNextSlot(slot_evaluations, min_time_setting):
+    fully_charged = [
+        (s, e["elapsed"]) for s, e in slot_evaluations.items()
+        if e["state"] == "PRESENT" and e["elapsed"] and e["elapsed"] >= min_time_setting
+    ]
+
+    if not fully_charged:
+        led_log.info("No fully charged slots available.")
+        return None
+
+    pick_next_slot = max(fully_charged, key=lambda x: x[1])[0]
+    tag = slot_evaluations[pick_next_slot]["tag"]
+    led_log.info(f"Next slot to pick: {pick_next_slot} (Tag: {tag})")
+
+    try:
+        ref.child("BatteryNextUp").set({
+            "BatteryNext": tag,
+            "Slot": pick_next_slot
+        })
+        led_log.info("Updated Firebase: BatteryNextUp")
+    except Exception as e:
+        led_log.error(f"Failed to update BatteryNextUp: {e}")
+
+    return pick_next_slot
+
+def heartbeat_loop():
+    """Periodically check serial connections and update Firebase /status."""
+    STATUS_INTERVAL = 10.0  # seconds
+    firebase_log.info("Heartbeat thread started.")
+
+    while True:
+        with serial_ports_lock:
+            ports_snapshot = dict(serial_ports)
+
+        status_data = {
+            "COM_PORT1": "connected" if COM_PORT1 in ports_snapshot else "disconnected",
+            "COM_PORT2": "connected" if COM_PORT2 in ports_snapshot else "disconnected",
+            "CPU_Temp": round(float(open("/sys/class/thermal/thermal_zone0/temp").read()) / 1000, 1),
+            "LastUpdated": timestamp()
+        }
+
+        try:
+            ref.child("status").update(status_data)
+            firebase_log.info(f"Heartbeat update: {status_data}")
+        except Exception as e:
+            firebase_log.error(f"Failed to update Firebase status: {e}")
+
+        time.sleep(STATUS_INTERVAL)
 
 
 # === MAIN ===
@@ -530,6 +578,7 @@ if __name__ == "__main__":
 
     # Start the LED manager thread (reads DB and writes LED commands using the same COM_PORT1 serial object)
     threading.Thread(target=led_manager_loop, daemon=True).start()
+    threading.Thread(target=heartbeat_loop, daemon=True).start()
 
     listen_rfid()
 
