@@ -205,7 +205,7 @@ def handle_serial(Serialport):
     while True:
         try:
             raw_line = ser.readline().decode("utf-8").strip()
-            serial_log.warning(f"Serial read failed on {Serialport}, retrying...")
+            #serial_log.warning(f"Serial read failed on {Serialport}, retrying...") #malplaced log
         except Exception:
             continue
         
@@ -436,7 +436,6 @@ def led_manager_loop():
         except Exception:
             min_time_setting = 0
 
-        now = time.time() #i dont think ts does anything
         with lock:
             local_slot_status = dict(slot_status)
 

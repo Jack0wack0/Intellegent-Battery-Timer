@@ -11,7 +11,7 @@ sudo apt-get update -y
 sudo apt-get upgrade -y
 
 echo "[*] Installing dependencies..."
-#sudo apt-get install -y python3 python3-pip chromium-browser
+#sudo apt-get install -y python3 python3-pip chromium-browser #doesnt exist anymore?
 
 echo "[*] Installing Python requirements..."
 pip3 install --break-system-packages -r requirements.txt
@@ -151,4 +151,3 @@ sudo systemctl restart tagtracker.service
 sudo systemctl restart browser.service
 
 echo "[*] Installation complete! Reboot to start the program."
-
