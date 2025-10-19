@@ -130,7 +130,7 @@ serial_ports = {}            # port_str -> serial.Serial object
 serial_ports_lock = threading.Lock()
 
 # === LED CONFIG (ADDED) ===
-POSITIONS = [10, 20, 30, 40, 50, 60, 70]  #pos for 0-6. LED width is 5 LEDS. number is where the leftmost LED is placed.
+POSITIONS = [3, 11, 18, 26, 34, 42, 49]  #pos for 0-6. LED width is 5 LEDS. number is where the leftmost LED is placed.
 HUE_RED = 0 #hue can be 0-255
 HUE_ORANGE = 25
 HUE_BLUE = 170
