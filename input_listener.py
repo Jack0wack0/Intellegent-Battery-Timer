@@ -95,7 +95,7 @@ with open("hardwareIDS.json") as hardwareID:
 COM_PORT1 = RemoteID["COM_PORT1"] #init com ports
 COM_PORT2 = RemoteID["COM_PORT2"] 
 BAUD_RATE = 9600
-MATCH_WINDOW_SECONDS = 1.0 #change to adjust the window for matching slots and RFID ID numbers.
+MATCH_WINDOW_SECONDS = 2.0 #change to adjust the window for matching slots and RFID ID numbers.
 FIREBASE_DB_BASE_URL = getenv('FIREBASE_DB_BASE_URL')
 FIREBASE_CREDS_FILE = getenv('FIREBASE_CREDS_FILE')
 
@@ -205,6 +205,7 @@ def handle_serial(Serialport):
     while True:
         try:
             raw_line = ser.readline().decode("utf-8").strip()
+            serial_log.info(f"RAW LINE: '{raw_line}' from {Serialport}")
             #serial_log.warning(f"Serial read failed on {Serialport}, retrying...") #malplaced log
         except Exception:
             continue
@@ -255,6 +256,9 @@ def handle_serial(Serialport):
                         matched_tag = tag 
                         match_log.info(f"Tag Pulled: {matched_tag}")
                         break
+                if not matched_tag:
+                    match_log.warning(f"No match found for slot {slot} at {timestamp(now)} — pending_tags: {pending_tags}")
+
                 if matched_tag:
                     match_log.info(f"Tag {matched_tag} matched to slot {slot} at {timestamp(now)}")
                     slot_status[slot]["tag"] = matched_tag
