@@ -246,7 +246,7 @@ def handle_serial(Serialport):
             slot_status[slot]["last_change"] = now 
 
             if state == "PRESENT":
-                
+                time.sleep(0.5) #wait for the keyboard input from the rfid reader to be processed, then match it with the slot.
                 # Try to match with pending RFID tag
                 matched_tag = None
                 
