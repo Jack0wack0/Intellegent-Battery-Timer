@@ -95,7 +95,7 @@ with open("hardwareIDS.json") as hardwareID:
 COM_PORT1 = RemoteID["COM_PORT1"] #init com ports
 COM_PORT2 = RemoteID["COM_PORT2"] 
 BAUD_RATE = 9600
-MATCH_WINDOW_SECONDS = 2.0 #change to adjust the window for matching slots and RFID ID numbers.
+MATCH_WINDOW_SECONDS = 3.0 #change to adjust the window for matching slots and RFID ID numbers.
 FIREBASE_DB_BASE_URL = getenv('FIREBASE_DB_BASE_URL')
 FIREBASE_CREDS_FILE = getenv('FIREBASE_CREDS_FILE')
 
@@ -246,9 +246,10 @@ def handle_serial(Serialport):
             slot_status[slot]["last_change"] = now 
 
             if state == "PRESENT":
-                time.sleep(0.5) #wait for the keyboard input from the rfid reader to be processed, then match it with the slot.
+                
                 # Try to match with pending RFID tag
                 matched_tag = None
+                time.sleep(1) #wait for the keyboard input from the rfid reader to be processed, then match it with the slot.
                 
                 for tag, t_time in pending_tags:
                     match_log.debug(f"Comparing tag time {timestamp(t_time)} to slot time {timestamp(now)}")
