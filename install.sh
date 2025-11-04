@@ -99,18 +99,18 @@ fi
 SERVICE_FILE=/etc/systemd/system/tagtracker.service
 if [ ! -f "$SERVICE_FILE" ]; then
   echo "[*] Installing systemd service..."
-  cat <<EOF | sudo tee "$SERVICE_FILE" > /dev/null
+  sudo bash -c "cat > $SERVICE_FILE" <<EOF
 [Unit]
 Description=TagTrackerFirebase
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 $PROJECT_DIR/input_listener.py
+ExecStart=/usr/bin/python3 $(pwd)/input_listener.py
 Restart=always
-User=$CURRENT_USER
+User=$(whoami)
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/$CURRENT_USER/.Xauthority
-WorkingDirectory=$PROJECT_DIR
+Environment=XAUTHORITY=/home/$(whoami)/.Xauthority
+WorkingDirectory=$(pwd)
 
 [Install]
 WantedBy=graphical.target
