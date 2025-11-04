@@ -61,7 +61,7 @@ general_log = logging.getLogger("GENERAL")
 time_log = logging.getLogger("TIME")
 match_log = logging.getLogger("MATCH PROCESS")
 
-# === SMART PRINT REDIRECTOR ===
+# print redirector
 loggers = {
     "FIREBASE": firebase_log,
     "LED": led_log,
@@ -102,6 +102,7 @@ FIREBASE_CREDS_FILE = getenv('FIREBASE_CREDS_FILE')
 general_log.info(f"Loaded hardware IDs: {RemoteID}")
 firebase_log.info(f"Firebase initializing.")
 
+# exit the program if firebase credentials are missing
 if not FIREBASE_DB_BASE_URL or not FIREBASE_CREDS_FILE:
     firebase_log.critical("Missing Firebase configuration in environment variables!")
     general_log.critical("Missing credentials. Program will not start.")
@@ -124,13 +125,13 @@ pending_tags = []  # list of (tag_id, timestamp) tuples
 lock = threading.Lock()
 tag_buffer = ""
 
-# === SERIAL SHARED OBJECTS (ADDED) ===
+# === SERIAL SHARED OBJECTS  ===
 # store opened serial.Serial objects here so the LED thread can reuse the same open port
 serial_ports = {}            # port_str -> serial.Serial object
 serial_ports_lock = threading.Lock()
 
-# === LED CONFIG (ADDED) ===
-POSITIONS = [3, 11, 18, 26, 34, 42, 49]  #pos for 0-6. LED width is 5 LEDS. number is where the leftmost LED is placed.
+# === LED CONFIG ===
+POSITIONS = [3, 11, 18, 26, 34, 42, 49]  #pos for 0-6. LED width is defined somewhere i forgot. number is where the leftmost LED is placed.
 HUE_RED = 0 #hue can be 0-255
 HUE_ORANGE = 25
 HUE_BLUE = 170
@@ -206,7 +207,6 @@ def handle_serial(Serialport):
         try:
             raw_line = ser.readline().decode("utf-8").strip()
             serial_log.info(f"RAW LINE: '{raw_line}' from {Serialport}")
-            #serial_log.warning(f"Serial read failed on {Serialport}, retrying...") #malplaced log
         except Exception:
             continue
         
@@ -219,7 +219,7 @@ def handle_serial(Serialport):
             continue
 
 
-        # Remove leading numeric prefix (timestamp) before SLOT_
+        # Remove timestamp before SLOT_ (presently timestamp is unused)
         if "SLOT_" not in raw_line:
             continue
         slot_index = raw_line.index("SLOT_")
