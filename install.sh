@@ -42,46 +42,67 @@ else
 fi
 
 # Detect connected Arduino serial devices
+# Detect connected Arduino serial devices
 HARDWARE_FILE="$PROJECT_DIR/hardwareIDS.json"
 
 if [ ! -f "$HARDWARE_FILE" ]; then
   echo
-  echo "Please plug in BOTH Arduinos, then type 'yes' and press Enter to continue."
+  echo "[*] Hardware ID setup starting..."
 
+  # Step 1: Detect first Arduino
+  echo
+  echo "Please plug in ONLY the FIRST Arduino (COM_PORT1), then type 'yes' and press Enter when ready."
   read -r CONTINUE
   if [ "$CONTINUE" != "yes" ]; then
     echo "Aborting hardware ID detection."
-    echo "You must create the ID file yourself."
     exit 1
   fi
 
-
-  echo "[*] Scanning for connected serial devices..."
-  SERIAL_PATHS=($(ls /dev/serial/by-id/* 2>/dev/null || true))
-
-  if [ ${#SERIAL_PATHS[@]} -lt 2 ]; then
-    echo "[!] Less than two serial devices detected."
-    echo "Detected devices:"
-    printf '%s\n' "${SERIAL_PATHS[@]}"
-    echo "Please connect both Arduinos and rerun the installer."
-    exit 1
-  fi
-
-  echo "[*] Found serial devices:"
-  printf ' - %s\n' "${SERIAL_PATHS[@]}"
-
+  SERIAL_BEFORE=($(ls /dev/serial/by-id/* 2>/dev/null || true))
+  echo "[*] Current connected serial devices:"
+  printf ' - %s\n' "${SERIAL_BEFORE[@]}"
   echo
-  echo "[*] Assign which device is which:"
-  select PORT1 in "${SERIAL_PATHS[@]}"; do
-    [ -n "$PORT1" ] && break
-  done
+  echo "Now unplug all Arduinos, press Enter when ready."
+  read -r
+
+  SERIAL_NONE=($(ls /dev/serial/by-id/* 2>/dev/null || true))
+  echo
+  echo "[*] Now plug in the FIRST Arduino again, then type 'yes' to detect it."
+  read -r CONFIRM1
+  if [ "$CONFIRM1" != "yes" ]; then
+    echo "Aborting hardware ID detection."
+    exit 1
+  fi
+
+  SERIAL_AFTER1=($(ls /dev/serial/by-id/* 2>/dev/null || true))
+  NEW1=$(comm -13 <(printf "%s\n" "${SERIAL_NONE[@]}" | sort) <(printf "%s\n" "${SERIAL_AFTER1[@]}" | sort))
+  if [ -z "$NEW1" ]; then
+    echo "[!] Could not detect new serial device for Arduino 1."
+    exit 1
+  fi
+  PORT1="$NEW1"
   echo "COM_PORT1 set to $PORT1"
 
-  select PORT2 in "${SERIAL_PATHS[@]}"; do
-    [ -n "$PORT2" ] && break
-  done
+  # Step 2: Detect second Arduino
+  echo
+  echo "Now unplug the FIRST Arduino, then plug in ONLY the SECOND Arduino (COM_PORT2)."
+  echo "Type 'yes' and press Enter when ready."
+  read -r CONFIRM2
+  if [ "$CONFIRM2" != "yes" ]; then
+    echo "Aborting hardware ID detection."
+    exit 1
+  fi
+
+  SERIAL_AFTER2=($(ls /dev/serial/by-id/* 2>/dev/null || true))
+  NEW2=$(comm -13 <(printf "%s\n" "${SERIAL_NONE[@]}" | sort) <(printf "%s\n" "${SERIAL_AFTER2[@]}" | sort))
+  if [ -z "$NEW2" ]; then
+    echo "[!] Could not detect new serial device for Arduino 2."
+    exit 1
+  fi
+  PORT2="$NEW2"
   echo "COM_PORT2 set to $PORT2"
 
+  # Save both detected ports
   cat <<EOF > "$HARDWARE_FILE"
 {
   "COM_PORT1": "$PORT1",
